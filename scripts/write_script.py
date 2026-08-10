@@ -13,6 +13,11 @@ from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    # 失敗の原因は stderr に出す。Windows 既定のロケール（cp932）のままだと
+    # 日本語の原因メッセージだけが文字化けし、「原因がログにそのまま出る」
+    # という各CLIの die()／中止メッセージの目的が損なわれる。
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

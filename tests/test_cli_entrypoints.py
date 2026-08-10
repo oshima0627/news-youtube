@@ -39,6 +39,9 @@ def test_python_scriptsXpy形式でhelpが起動できる(script: str) -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        # 明示しないと Windows では cp932 でデコードされ、失敗時の stderr
+        # （日本語）が読めないうえ EncodingWarning が出る。
+        encoding="utf-8",
         timeout=30,
     )
     assert proc.returncode == 0, (

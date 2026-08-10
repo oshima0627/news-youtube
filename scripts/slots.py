@@ -14,9 +14,16 @@ PUBLISH_SLOTS = (time(7, 30), time(18, 30))
 
 
 def pending_slots(now: datetime) -> list[datetime]:
-    """now の時点でまだ来ていない当日の枠を、早い順に返す。"""
+    """now の時点でまだ来ていない当日の枠を、早い順に返す。
+
+    返す枠は now と同じタイムゾーン（naive なら naive、aware ならそのまま）。
+    combine に tzinfo を渡さないと aware な now と naive な枠を比較して
+    TypeError になるうえ、呼び出し側が枠を ISO8601 に整形したときに
+    タイムゾーンが落ちる。run_daily.py は JST を明示して呼ぶ。
+    """
     return [
-        datetime.combine(now.date(), t)
-        for t in PUBLISH_SLOTS
-        if datetime.combine(now.date(), t) > now
+        slot
+        for slot in (datetime.combine(now.date(), t, tzinfo=now.tzinfo)
+                     for t in PUBLISH_SLOTS)
+        if slot > now
     ]

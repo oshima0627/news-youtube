@@ -22,10 +22,24 @@ INK = (250, 250, 252)
 MUTED = (150, 158, 176)
 
 
+# FONT_SANS が全滅したことを一度だけ警告するためのフラグ。pick_font は
+# 1フレームあたり何十回も呼ばれるので、毎回出すと他の警告が埋もれる。
+_warned_no_font = False
+
+
 def pick_font(size: int) -> ImageFont.FreeTypeFont:
+    global _warned_no_font
     for p in FONT_SANS:
         if Path(p).exists():
             return ImageFont.truetype(p, size)
+    # load_default() は日本語グリフを持たないため、このまま進むと文字が
+    # すべて豆腐（□）になった動画がそのまま公開される。完全自動なので
+    # 誰も気づかないまま公開されうる。必ず警告を出す。
+    if not _warned_no_font:
+        _warned_no_font = True
+        print("! 日本語フォントが1つも見つかりません（PIL の load_default に"
+              "フォールバックします）。このままだと文字が豆腐（□）になった"
+              f"動画が公開されます。探した場所: {', '.join(FONT_SANS)}")
     return ImageFont.load_default()
 
 
