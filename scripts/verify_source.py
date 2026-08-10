@@ -24,7 +24,12 @@ if str(ROOT) not in sys.path:
 CANDIDATES = ROOT / "work" / "candidates.json"
 RECIPES = ROOT / "recipes"
 
-from scripts.evidence import Evidence, collect  # noqa: E402
+from scripts.evidence import Evidence, EvidenceSourcesUnavailable, collect  # noqa: E402
+
+
+def die(msg: str) -> None:
+    print(f"✗ {msg}", file=sys.stderr)
+    sys.exit(1)
 
 
 def build_recipe(candidate: dict, ev: Evidence) -> dict:
@@ -49,7 +54,13 @@ def main() -> None:
     for c in candidates:
         if len(made) >= a.want:
             break
-        found = collect(c["keyword"])
+        try:
+            found = collect(c["keyword"])
+        except EvidenceSourcesUnavailable as e:
+            # 一次資料の取得元そのものが疎通不能（環境不備）。「根拠が無かった」
+            # （正常系）と混同して見送りを続けると、原因不明のまま採用0件に
+            # なる。ここで即座に止めて原因を出す。
+            die(f"一次資料の取得元に接続できません。中止します: {e}")
         if not found:
             print(f"- 見送り（根拠なし）: {c['title'][:32]}")
             continue

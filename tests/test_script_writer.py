@@ -1,7 +1,13 @@
 import pytest
 
 from scripts import script_writer
-from scripts.script_writer import Script, build_prompt, write
+from scripts.script_writer import (
+    Script,
+    ScriptGenerationRejected,
+    ScriptWriterUnavailable,
+    build_prompt,
+    write,
+)
 
 RECIPE = {
     "id": "abc123",
@@ -41,6 +47,12 @@ def test_尺の指示が入る():
 # 投稿が止まっていることに何日も気づけない。ここでは実際にAPIを叩かずに、
 # 「認証情報が解決できない」「refusal」「parsed_output が None」の3系統と、
 # 正常系の計4パターンを固定する。
+#
+# 前者2つ（refusal / parsed_output が None）は特定の題材の内容に起因する
+# 失敗（ScriptGenerationRejected）、認証エラーはどの題材でも同じ理由で
+# 起こる環境不備（ScriptWriterUnavailable）として区別される。呼び出し側
+# （run_daily.py）はこの2つを別々に扱う（前者はその題材だけ飛ばし、
+# 後者は日次実行全体を中止する）ため、型そのものをここで固定する。
 
 
 class _FakeMessages:
@@ -79,7 +91,7 @@ def test_認証が解決できないとき原因が分かるメッセージの�
     monkeypatch.setattr(
         script_writer, "Anthropic", lambda: _FakeClient(error=auth_error))
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ScriptWriterUnavailable) as exc_info:
         write(RECIPE)
 
     msg = str(exc_info.value)
@@ -87,26 +99,26 @@ def test_認証が解決できないとき原因が分かるメッセージの�
     assert "ant auth login" in msg
 
 
-def test_refusalのとき例外になりstop_detailsが含まれる(monkeypatch):
+def test_refusalのとき題材固有の例外になりstop_detailsが含まれる(monkeypatch):
     response = _FakeResponse(
         stop_reason="refusal", stop_details="不適切な内容のため生成を拒否しました")
     monkeypatch.setattr(
         script_writer, "Anthropic", lambda: _FakeClient(response=response))
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ScriptGenerationRejected) as exc_info:
         write(RECIPE)
 
     assert "不適切な内容のため生成を拒否しました" in str(exc_info.value)
 
 
-def test_parsed_outputがNoneのとき例外になりstop_reasonが含まれる(monkeypatch):
+def test_parsed_outputがNoneのとき題材固有の例外になりstop_reasonが含まれる(monkeypatch):
     response = _FakeResponse(
         stop_reason="max_tokens", parsed_output=None,
         usage={"output_tokens": 16000})
     monkeypatch.setattr(
         script_writer, "Anthropic", lambda: _FakeClient(response=response))
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ScriptGenerationRejected) as exc_info:
         write(RECIPE)
 
     assert "max_tokens" in str(exc_info.value)

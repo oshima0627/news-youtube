@@ -20,10 +20,10 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
-    # 環境不備での中止メッセージ（die/abort）は stderr に出す。既定の Windows
-    # ロケール（cp932）のままだと日本語の原因メッセージが文字化けし、
-    # 「原因が明確に出る」という本タスクの目的そのものを損なうため、
-    # stdout と同様に reconfigure する。
+    # 環境不備での中止メッセージは stderr に出す。既定の Windows ロケール
+    # （cp932）のままだと日本語の原因メッセージが文字化けし、「原因が明確に
+    # 出る」という本タスクの目的そのものを損なうため、stdout と同様に
+    # reconfigure する。
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,15 +38,14 @@ STREAK = ROOT / "state" / "empty_streak.json"
 CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 
 from scripts.build_short import build  # noqa: E402
-from scripts.evidence import collect  # noqa: E402
+from scripts.evidence import EvidenceSourcesUnavailable, collect  # noqa: E402
 from scripts.narrate import synthesize  # noqa: E402
-from scripts.script_writer import write  # noqa: E402
+from scripts.script_writer import (  # noqa: E402
+    ScriptGenerationRejected,
+    ScriptWriterUnavailable,
+    write,
+)
 from scripts.slots import pending_slots  # noqa: E402
-
-
-def die(msg: str) -> None:
-    print(f"✗ {msg}", file=sys.stderr)
-    sys.exit(1)
 
 
 def _bump_empty_streak(made: int) -> None:
@@ -109,7 +108,22 @@ def main() -> None:
         for cand in candidates:
             if made >= len(slots):
                 break
-            found = collect(cand["keyword"])
+
+            # 一次資料の取得元（国会会議録API等）が1系統も応答しない状況は
+            # 「根拠が無かった」（正常系、空リスト）とは違う環境不備。
+            # evidence.collect() がその2つを EvidenceSourcesUnavailable の
+            # 有無で区別しているので、ここでも区別する。区別しないと、
+            # APIが疎通不能なだけの日に全候補ぶん「見送り（根拠なし）」を
+            # 繰り返した末、終了コード0で「本日 0/2 本」とだけ表示されて
+            # 原因に気づけない（write/synthesize と同じ理由で中止する）。
+            try:
+                found = collect(cand["keyword"])
+            except EvidenceSourcesUnavailable as e:
+                print(f"✗ 一次資料の取得元に接続できません。環境不備の"
+                      f"可能性が高いため日次実行を中止します: {e}",
+                      file=sys.stderr)
+                aborted = True
+                break
             if not found:
                 print(f"- 見送り（根拠なし）: {cand['title'][:32]}")
                 continue
@@ -142,29 +156,46 @@ def main() -> None:
                       "<画像URL> で用意してから次回の実行で拾われます")
                 continue
 
-            # 台本生成（write）と音声合成（synthesize）は、この題材固有の事情
-            # ではなく ANTHROPIC_API_KEY や VOICEVOX の起動状態という「環境」に
-            # 依存する。環境が壊れていれば1件目から確実に同じ理由で落ちる。
-            # ここを他の失敗（build() の画像合成やアップロードの一時的なエラー
-            # など、題材固有で起きうる失敗）と同列に「この題材だけ飛ばして次へ」
-            # にすると、全候補ぶん同じ失敗を繰り返した末に「本日 0/2 本」とだけ
-            # 表示されて、ログを見るまで原因が環境不備だと気づけない。
-            # そのためこの2関数の失敗だけは題材を飛ばさず、日次実行全体を
-            # その場で中止して原因をそのまま出す。
+            # write() は失敗の原因によって例外型が分かれている
+            # （scripts/script_writer.py 参照）:
+            #   - ScriptWriterUnavailable: ANTHROPIC_API_KEY 未設定／無効など
+            #     の環境不備。どの題材で呼んでも同じ理由で確実に失敗するため、
+            #     題材を飛ばさず日次実行全体をその場で中止する。
+            #   - ScriptGenerationRejected: Anthropic の安全フィルタによる
+            #     refusal や構造化出力の失敗など、この題材の内容固有の失敗。
+            #     政治ニュースを扱う以上、特定の題材だけで現実に起こりうる。
+            #     環境は正常で他の題材なら成功しうるので、この題材だけ飛ばして
+            #     次に進む（日次実行全体は止めない）。
             try:
                 script = write(recipe)
+            except ScriptWriterUnavailable as e:
+                print(f"✗ 台本生成が失敗しました。ANTHROPIC_API_KEY が未設定／"
+                      f"無効など、環境不備の可能性が高いため日次実行を"
+                      f"中止します: {e}", file=sys.stderr)
+                aborted = True
+                break
+            except ScriptGenerationRejected as e:
+                print(f"! 台本生成がこの題材で失敗しました"
+                      f"（この題材は飛ばします）: {cand['id']} {e}")
+                continue
+
+            # synthesize() は VOICEVOX の接続確認（ensure_engine）に失敗した
+            # ときだけ例外を投げる設計になっている（尺のズレ等は例外にせず
+            # 警告に留める）。したがってここに来る失敗はほぼ確実に環境不備
+            # （VOICEVOX未起動）であり、write() の環境不備側と同じ扱いにする。
+            try:
                 synthesize(script.narration, workdir / "voice.wav")
             except Exception as e:                # noqa: BLE001
-                print(f"✗ 台本生成または音声合成が失敗しました。"
-                      "ANTHROPIC_API_KEY が未設定／無効か、VOICEVOXが起動して"
-                      "いないなど、環境不備の可能性が高いため日次実行を"
-                      f"中止します: {e}", file=sys.stderr)
+                print(f"✗ 音声合成が失敗しました。VOICEVOXが起動していない"
+                      f"など、環境不備の可能性が高いため日次実行を中止します: "
+                      f"{e}", file=sys.stderr)
                 aborted = True
                 break
 
             # ここから先（動画合成・アップロード）は画像やffmpeg、YouTube側の
             # 一時的なエラーなど題材固有の要因で失敗しうる。1本の失敗で当日を
             # 全部落とさない。work/ は残るので次回リトライできる
+            stuck_private = False
             try:
                 license_ = json.loads(license_path.read_text(encoding="utf-8"))
                 (workdir / "script.json").write_text(
@@ -175,19 +206,48 @@ def main() -> None:
                 if not a.dry_run:
                     subprocess.run([sys.executable, "scripts/upload_youtube.py",
                                     str(workdir)], check=True, cwd=ROOT)
-                    subprocess.run(
-                        [sys.executable, "scripts/upload_youtube.py",
-                         str(workdir), "--schedule",
-                         slots[made].strftime("%Y-%m-%dT%H:%M:%S+09:00")],
-                        check=True, cwd=ROOT)
+
+                    # slots はループ開始時に一度だけ計算している。収集〜台本
+                    # 〜音声合成〜動画合成〜アップロードには数分かかりうるので、
+                    # 18:30直前に起動したときなど、ここに来た時点で対象の枠が
+                    # すでに過去になっているおそれがある。過去時刻を
+                    # --schedule に渡すと YouTube 側に拒否され、動画は
+                    # private のまま残ってしまう。渡す直前に改めて確認する。
+                    slot = slots[made]
+                    if slot <= datetime.now():
+                        stuck_private = True
+                        print(f"! 枠 {slot.strftime('%H:%M')} を過ぎてしまった"
+                              "ため予約せず private のまま残します。"
+                              "手動で確認して公開してください: "
+                              f"python scripts/upload_youtube.py {workdir} "
+                              "--publish")
+                    else:
+                        subprocess.run(
+                            [sys.executable, "scripts/upload_youtube.py",
+                             str(workdir), "--schedule",
+                             slot.strftime("%Y-%m-%dT%H:%M:%S+09:00")],
+                            check=True, cwd=ROOT)
             except Exception as e:                # noqa: BLE001
                 print(f"! 失敗しました（この題材は飛ばします）: {cand['id']} {e}")
                 continue
 
-            # 投稿が通ってから既出に入れる。失敗した題材は次回また拾えるようにする
-            seen.add(cand["id"])
+            # --dry-run のときはアップロードしていないので既出にしない。
+            # ここで既出にしてしまうと、本番実行（--dry-run無し）のときに
+            # この題材が二度と拾われず、結局その日は無投稿のまま終わる。
+            #
+            # 予約時刻を過ぎて private のまま残った場合（stuck_private）は
+            # --dry-run ではないので既出に入れる。動画自体は既にアップロード
+            # 済みであり、既出に入れずに次回また同じ候補を処理すると、
+            # write()/synthesize()/build() をやり直した上で
+            # upload_youtube.py がもう1本アップロードしてしまう
+            # （upload_youtube.py に重複防止や更新の仕組みが無いため）。
+            # 「同じ内容の動画が2本並ぶ」事故より、「1本が private のまま
+            # 手動公開待ちになる」ほうが実害が小さいので、既出に入れる方を選ぶ。
+            if not a.dry_run:
+                seen.add(cand["id"])
             made += 1
-            print(f"✓ {made}/{len(slots)} {script.title[:40]}")
+            mark = "（要手動公開）" if stuck_private else ""
+            print(f"✓ {made}/{len(slots)} {script.title[:40]}{mark}")
     finally:
         # 中止した場合でも、そこまでに投稿できた分は既出として残す
         SEEN.parent.mkdir(parents=True, exist_ok=True)

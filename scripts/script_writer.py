@@ -26,6 +26,27 @@ _AUTH_HINT = (
     "ANTHROPIC_API_KEY を設定するか、`ant auth login` でプロファイルを作成してください。"
 )
 
+
+class ScriptWriterUnavailable(RuntimeError):
+    """台本生成そのものが実行できない状態（環境不備）。
+
+    ANTHROPIC_API_KEY が未設定／無効など、この題材に限らずどの題材で
+    呼んでも同じ理由で確実に失敗する状況を表す。呼び出し側（run_daily.py）
+    はこれを日次実行全体の即時中止シグナルとして扱う。
+    """
+
+
+class ScriptGenerationRejected(RuntimeError):
+    """個別の題材に対する台本生成が失敗した（環境は正常）。
+
+    Anthropic の安全フィルタによる refusal や、構造化出力として受け取れ
+    なかった場合など、その題材の内容に起因して起こる失敗を表す
+    （政治ニュースを扱う以上、特定の題材だけで現実に起こりうる）。
+    他の題材では成功する可能性があるため、呼び出し側はこの題材だけを
+    飛ばして次に進む。
+    """
+
+
 SYSTEM = """あなたは日本の政治・外交ニュースを扱う解説チャンネルの構成作家です。
 与えられた一次資料（国会会議録の逐語引用、または政府統計）だけを根拠に、
 60秒のショート動画の台本を書きます。
@@ -81,21 +102,29 @@ def write(recipe: dict) -> Script:
             output_format=Script,
         )
     except AuthenticationError as e:
-        # 鍵/トークンは解決できたが無効・失効している場合（APIが401を返した場合）
-        raise RuntimeError(f"{_AUTH_HINT}（元のエラー: {e}）") from e
+        # 鍵/トークンは解決できたが無効・失効している場合（APIが401を返した場合）。
+        # どの題材で呼んでも同じ理由で失敗する環境不備なので ScriptWriterUnavailable。
+        raise ScriptWriterUnavailable(f"{_AUTH_HINT}（元のエラー: {e}）") from e
     except TypeError as e:
         # 認証情報が何も解決できなかった場合、SDK はリクエスト構築時にこの
         # TypeError を出す（メッセージに "authentication" を含む）。それ以外の
         # TypeError（実装側のバグ等）まで握りつぶさないよう、内容で見分ける。
+        # こちらも環境不備なので ScriptWriterUnavailable。
         if "authentication" not in str(e).lower():
             raise
-        raise RuntimeError(f"{_AUTH_HINT}（元のエラー: {e}）") from e
+        raise ScriptWriterUnavailable(f"{_AUTH_HINT}（元のエラー: {e}）") from e
 
     if response.stop_reason == "refusal":
-        raise RuntimeError(f"台本生成が拒否されました: {response.stop_details}")
+        # Anthropic の安全フィルタによる拒否。政治ニュースを扱う以上、
+        # 特定の題材の内容（誰かの発言・行為への言及など）が理由で起こりうる。
+        # 環境は正常で、他の題材なら成功する可能性があるので
+        # ScriptGenerationRejected（この題材だけ飛ばす対象）にする。
+        raise ScriptGenerationRejected(f"台本生成が拒否されました: {response.stop_details}")
     parsed = response.parsed_output
     if parsed is None:
-        raise RuntimeError(
+        # refusal と同様、この呼び出し・この題材固有の失敗（max_tokens到達や
+        # 構造化出力パース失敗など）であり、環境不備ではない。
+        raise ScriptGenerationRejected(
             "台本を構造化出力として受け取れませんでした"
             f"（stop_reason={response.stop_reason}, "
             f"usage={getattr(response, 'usage', None)}）"

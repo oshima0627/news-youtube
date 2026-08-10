@@ -1,4 +1,6 @@
-from scripts.evidence import Evidence, collect, is_admissible
+import pytest
+
+from scripts.evidence import Evidence, EvidenceSourcesUnavailable, collect, is_admissible
 
 
 def _ev(**kw) -> Evidence:
@@ -207,12 +209,32 @@ def test_collectはsearch_speechesの結果をそのまま返す(monkeypatch):
     assert collect("議員定数") == [ok]
 
 
-def test_collectは全系統が落ちたら空になる(monkeypatch):
+def test_collectは全系統が例外で落ちたら環境不備の例外を送出する(monkeypatch):
     # 現状は search_speeches の1系統のみなので、それが落ちる＝全系統が落ちたことになる。
-    # 1系統でも「落ちたら空になる（例外を握りつぶして空を返す）」ことは検証できる。
+    # ここを空リストで返してしまうと、「採用条件を満たすものが無かった」（正常系）
+    # と「一次資料APIが疎通不能」（環境不備）が呼び出し側から区別できなくなる。
+    # 区別できないと run_daily.py は「見送り（根拠なし）」を全候補ぶん繰り返した末に
+    # 「本日 0/2 本」とだけ表示して、環境が壊れていることに気づけない。
     def boom(*a, **kw):
         raise RuntimeError("落ちている")
 
     monkeypatch.setattr("scripts.evidence.search_speeches", boom)
+
+    with pytest.raises(EvidenceSourcesUnavailable) as exc_info:
+        collect("議員定数")
+
+    assert "議員定数" in str(exc_info.value)
+    assert "落ちている" in str(exc_info.value)
+
+
+def test_collectは取得に成功したが採用条件を満たすものが無ければ空リストを返す(monkeypatch):
+    # 環境（API疎通）は正常で、単に該当する発言が無かった／採用ゲートを通らな
+    # かっただけのケース。この場合は例外にせず、従来どおり空リストを返す
+    # （EvidenceSourcesUnavailable と明確に区別する）。
+    not_admissible = Evidence(kind="speech", source_url="https://kokkai.ndl.go.jp/#/x",
+                              figure="", quote="次に。", context="予算委員会")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches",
+                        lambda k, limit=10: [not_admissible])
 
     assert collect("議員定数") == []

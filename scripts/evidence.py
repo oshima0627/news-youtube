@@ -96,6 +96,19 @@ def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
     return parse_speeches(r.json())
 
 
+class EvidenceSourcesUnavailable(RuntimeError):
+    """一次資料の取得元が1系統も応答しなかった（環境・ネットワーク不備）。
+
+    「取得には成功したが採用条件を満たす根拠が無かった」（正常系、空リストを
+    返す）場合と区別するための例外。区別しないと、国会会議録APIが疎通不能
+    なだけの日でも collect() が空リストを返し続け、呼び出し側
+    （run_daily.py）からは「見送り（根拠なし）」にしか見えない。その結果、
+    全候補ぶん同じ失敗を繰り返した末に終了コード0で「本日 0/2 本」とだけ
+    表示され、環境が壊れていることに気づけない — というのが run_daily.py
+    側で最悪とされている失敗パターンなので、ここで区別できるようにする。
+    """
+
+
 def collect(keyword: str) -> list[Evidence]:
     """一次資料の各系統に当てて、採用条件を満たした根拠だけを返す。
 
@@ -108,12 +121,24 @@ def collect(keyword: str) -> list[Evidence]:
     このタプルに search_statistics を戻す。
 
     系統ごとに例外を握りつぶす構造は、系統を後から追加・復活しやすくするために
-    あえて維持してある。1系統でも「その系統が落ちたら空になる」ことに変わりはない。
+    あえて維持してある。ただし**全系統が例外で落ちた**（＝1件も取得に成功して
+    いない）場合だけは、「採用条件を満たすものが無かった」という正常系の空リスト
+    と区別するために EvidenceSourcesUnavailable を送出する。1系統以上が
+    成功していれば（採用ゲートを通らなかっただけでも）従来どおり空リストを返す。
     """
     found: list[Evidence] = []
-    for fetch in (lambda: search_speeches(keyword),):
+    sources = (lambda: search_speeches(keyword),)
+    failures: list[str] = []
+    for fetch in sources:
         try:
             found.extend(fetch())
         except Exception as e:            # noqa: BLE001 — 系統ごとに握りつぶす
             print(f"! 一次資料の取得に失敗しました（この系統は飛ばします）: {e}")
+            failures.append(str(e))
+
+    if len(failures) == len(sources):
+        raise EvidenceSourcesUnavailable(
+            f"一次資料の取得元が1系統も応答しませんでした（キーワード: {keyword}）: "
+            + "; ".join(failures))
+
     return [ev for ev in found if is_admissible(ev)]
