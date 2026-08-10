@@ -63,6 +63,15 @@ class Script(BaseModel):
     title: str = Field(description="YouTubeのタイトル。60文字以内。ハッシュタグは含めない")
     headline: str = Field(description="画面上部に出す見出し。20文字以内")
     narration: str = Field(description="読み上げる本文。350〜400字")
+    subtitle: str = Field(
+        description="字幕バンドに出す要点。40文字以内")
+    quote_excerpt: str = Field(
+        description="一次資料の逐語引用からそのまま抜き出した短い一節。"
+                    "25文字以内。言い換えないこと")
+    # figure_label / figure_value は、一次資料が実際の数値を持つ系統
+    # （e-Stat の getStatsData など）が戻ったときに数値カードで使う。
+    # 現状の唯一の系統（国会会議録）は Evidence.figure が常に空なので、
+    # 画面には quote_excerpt を使った引用カードが出る（cards.py 参照）。
     figure_label: str = Field(description="数値カードの見出し。10文字以内")
     figure_value: str = Field(description="数値カードに大きく出す値。12文字以内")
     tags: list[str] = Field(description="YouTubeのタグ。3〜6個")
@@ -85,8 +94,21 @@ def build_prompt(recipe: dict) -> str:
     parts += [
         "",
         "この一次資料だけを根拠に、60秒（350〜400字）のナレーションを書いてください。",
-        "figure_value には、視聴者が一目で分かる数字か短い言葉を入れてください。",
+        "subtitle には、字幕バンドに出す要点を40文字以内で書いてください"
+        "（ナレーション全文ではありません）。",
     ]
+    if ev.get("quote"):
+        # 画面に出るのはこの一節そのもの（引用カード）。言い換えると、
+        # 一次資料の出典キャプションが付いた文字列が一次資料と一致しなくなる。
+        # run_daily.py は逐語引用の部分文字列であることを実際に検証し、
+        # 外れていたら機械抽出で差し替える。
+        parts.append(
+            "quote_excerpt には、上の逐語引用から**そのまま**（1文字も変えずに）"
+            "抜き出した25文字以内の一節を入れてください。要約・言い換えは禁止です。")
+    if ev.get("figure"):
+        parts.append(
+            "figure_label / figure_value には、上の数値を視聴者が一目で分かる形で"
+            "入れてください。")
     return "\n".join(parts)
 
 

@@ -12,11 +12,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    # 失敗の原因は stderr に出す。Windows 既定のロケール（cp932）のままだと
+    # 日本語の原因メッセージだけが文字化けし、「原因がログにそのまま出る」
+    # という各CLIの die()／中止メッセージの目的が損なわれる。
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -24,22 +28,18 @@ if str(ROOT) not in sys.path:
 CANDIDATES = ROOT / "work" / "candidates.json"
 RECIPES = ROOT / "recipes"
 
-from scripts.evidence import Evidence, EvidenceSourcesUnavailable, collect  # noqa: E402
+# build_recipe は run_daily.py と共有する。同じ形のレシピを2箇所で組み立てて
+# いると、片方だけ形が変わったときに再現できないレシピが混ざる（evidence.py 参照）。
+from scripts.evidence import (  # noqa: E402
+    EvidenceSourcesUnavailable,
+    build_recipe,
+    collect,
+)
 
 
 def die(msg: str) -> None:
     print(f"✗ {msg}", file=sys.stderr)
     sys.exit(1)
-
-
-def build_recipe(candidate: dict, ev: Evidence) -> dict:
-    return {
-        "id": candidate["id"],
-        "headline": candidate["title"],
-        "keyword": candidate["keyword"],
-        "category": candidate["category"],
-        "evidence": asdict(ev),
-    }
 
 
 def main() -> None:

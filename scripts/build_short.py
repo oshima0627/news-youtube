@@ -19,13 +19,18 @@ from PIL import Image
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    # 失敗の原因は stderr に出す。Windows 既定のロケール（cp932）のままだと
+    # 日本語の原因メッセージだけが文字化けし、「原因がログにそのまま出る」
+    # という各CLIの die()／中止メッセージの目的が損なわれる。
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
 
 from scripts.cards import (HOLE_TOP, PHOTO_H, SHORT_SIZE, render_figure,  # noqa: E402
-                           render_frame)
+                           render_frame, render_quote)
 from scripts.narrate import TARGET_MAX, TARGET_MIN, wav_duration_seconds  # noqa: E402
 
 
@@ -40,18 +45,32 @@ def _fill(img: Image.Image, size: tuple[int, int]) -> Image.Image:
     return resized.crop((left, top, left + tw, top + th))
 
 
-def compose_stage(photo: Path, script: dict, source: str) -> Image.Image:
-    """実写＋数値カード＋上下の帯を1枚に焼く。"""
+def compose_stage(photo: Path, script: dict, source: str,
+                  figure: str = "") -> Image.Image:
+    """実写＋根拠カード＋上下の帯を1枚に焼く。
+
+    figure は一次資料が持っている実際の数値（`Evidence.figure`）。
+    これが空でない系統（統計・公表）では数値カードを使い、空の系統（発言）では
+    引用カードを使う。カードには必ず一次資料の出典キャプションが付くので、
+    figure が空なのに数値カードを使うと、モデルが作った値に一次資料の出典が
+    付いてしまう（設計方針「一次資料が取れなければ公開しない」の破れ）。
+
+    字幕バンドに渡すのは script["subtitle"]。ナレーション全文（350〜400字）を
+    渡すと4行＝60文字あまりしか描画されず、残り全部が毎ビルド切り捨て警告に
+    なるうえ、画面には文の途中で切れた冒頭だけが60秒間出続ける。
+    """
     w, _ = SHORT_SIZE
     stage = Image.new("RGB", SHORT_SIZE, (16, 24, 43))
 
     with Image.open(photo) as im:
         stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, HOLE_TOP))
 
-    figure = render_figure(script["figure_label"], script["figure_value"], source)
-    stage.paste(figure, (0, HOLE_TOP + PHOTO_H))
+    card = (render_figure(script["figure_label"], script["figure_value"], source)
+            if figure.strip()
+            else render_quote(script["quote_excerpt"], source))
+    stage.paste(card, (0, HOLE_TOP + PHOTO_H))
 
-    frame = render_frame(script["headline"], script["narration"])
+    frame = render_frame(script["headline"], script["subtitle"])
     stage.paste(frame, (0, 0), frame)
     return stage
 
@@ -101,11 +120,12 @@ def build(workdir: Path) -> Path:
     license_ = json.loads((workdir / "license.json").read_text(encoding="utf-8"))
     recipe = json.loads(
         (ROOT / "recipes" / f"{workdir.name}.json").read_text(encoding="utf-8"))
-    # 数値カードの脚注に出す。どの一次資料から取った数字かを画面に残す
+    # 根拠カードの脚注に出す。どの一次資料から取った根拠かを画面に残す
     source = recipe["evidence"]["context"]
+    figure = recipe["evidence"].get("figure") or ""
 
     stage_path = workdir / "stage.png"
-    compose_stage(workdir / "photo.jpg", script, source).save(stage_path)
+    compose_stage(workdir / "photo.jpg", script, source, figure).save(stage_path)
 
     voice_path = workdir / "voice.wav"
     # voice.wav の実尺を測り、-t で出力尺を明示的に確定させる。

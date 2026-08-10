@@ -7,16 +7,23 @@ from scripts import build_short
 from scripts.build_short import compose_stage
 from scripts.cards import SHORT_SIZE
 
-SCRIPT = {"headline": "中国軍機が照射", "narration": "レーダー照射は攻撃の一歩手前",
+NARRATION = "レーダー照射は攻撃の一歩手前だと国会で答弁されています。" * 12
+
+SCRIPT = {"headline": "中国軍機が照射", "narration": NARRATION,
+          "subtitle": "照射は攻撃の一歩手前",
+          "quote_excerpt": "攻撃の一歩手前",
           "figure_label": "照射回数", "figure_value": "1回",
           "title": "t", "tags": []}
 
 
-def test_下地は縦型の不透明画像になる(tmp_path):
-    photo = tmp_path / "photo.jpg"
-    Image.new("RGB", (1600, 900), (80, 90, 110)).save(photo)
+def _photo(tmp_path, size=(1600, 900)):
+    path = tmp_path / "photo.jpg"
+    Image.new("RGB", size, (80, 90, 110)).save(path)
+    return path
 
-    got = compose_stage(photo, SCRIPT, source="国会会議録")
+
+def test_下地は縦型の不透明画像になる(tmp_path):
+    got = compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録")
     assert got.size == SHORT_SIZE
     assert got.mode == "RGB"
 
@@ -27,6 +34,62 @@ def test_縦長の写真でも横幅いっぱいに収まる(tmp_path):
 
     got = compose_stage(photo, SCRIPT, source="e-Stat")
     assert got.size == SHORT_SIZE
+
+
+# --- C1: figure の有無で根拠カードを出し分ける ----------------------------
+
+def test_figureが空なら引用カードを使う(tmp_path, monkeypatch):
+    # 発言系（Evidence.figure が空）でモデル生成の数値カードを使うと、
+    # 捏造されうる値に一次資料の出典キャプションが付く。
+    calls = []
+    monkeypatch.setattr(build_short, "render_quote",
+                        lambda text, source: (calls.append(("quote", text, source)),
+                                              Image.new("RGB", (1080, 341)))[1])
+    monkeypatch.setattr(build_short, "render_figure",
+                        lambda *a: pytest.fail("figureが空なのに数値カードを使っている"))
+
+    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録", figure="")
+
+    assert calls == [("quote", "攻撃の一歩手前", "国会会議録")]
+
+
+def test_figureがあれば数値カードを使う(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(build_short, "render_figure",
+                        lambda label, value, source: (
+                            calls.append(("figure", label, value, source)),
+                            Image.new("RGB", (1080, 341)))[1])
+    monkeypatch.setattr(build_short, "render_quote",
+                        lambda *a: pytest.fail("figureがあるのに引用カードを使っている"))
+
+    compose_stage(_photo(tmp_path), SCRIPT, source="e-Stat", figure="30%減")
+
+    assert calls == [("figure", "照射回数", "1回", "e-Stat")]
+
+
+# --- C2: 字幕バンドにはナレーション全文を渡さない --------------------------
+
+def test_字幕バンドにはsubtitleを渡しナレーション全文は渡さない(tmp_path, monkeypatch):
+    # 字幕バンドは4行（実測60文字あまり）しか描画しない。ナレーション全文
+    # （350〜400字）を渡すと毎ビルド必ず切り捨て警告が出るうえ、画面には
+    # 文の途中で切れた冒頭だけが60秒間出続ける。
+    calls = []
+    monkeypatch.setattr(build_short, "render_frame",
+                        lambda headline, subtitle: (
+                            calls.append((headline, subtitle)),
+                            Image.new("RGBA", SHORT_SIZE, (0, 0, 0, 0)))[1])
+
+    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録")
+
+    assert calls == [("中国軍機が照射", "照射は攻撃の一歩手前")]
+    assert NARRATION not in [c[1] for c in calls]
+
+
+def test_実際のビルド経路で字幕の切り捨て警告が出ない(tmp_path, capsys):
+    # モックせずに描画まで通し、「毎ビルド必ず出る警告」が消えたことを確認する。
+    compose_stage(_photo(tmp_path), SCRIPT, source="第217回国会 予算委員会")
+    out = capsys.readouterr().out
+    assert "字幕が" not in out
 
 
 def test_mp4_duration_secondsはffprobeの出力を秒数として返す(tmp_path, monkeypatch):

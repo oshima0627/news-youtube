@@ -1,5 +1,5 @@
 from scripts.cards import (HOLE_BOTTOM, HOLE_TOP, PHOTO_H, SHORT_SIZE,
-                           render_figure, render_frame)
+                           render_figure, render_frame, render_quote)
 
 
 def _hole_is_fully_transparent(img):
@@ -78,3 +78,28 @@ def test_数値が極端に長いと省略記号で切り詰められ警告が�
     out = capsys.readouterr().out
     assert "数値" in out
     assert "切り詰め" in out
+
+
+# --- 引用カード（一次資料が発言のとき使う） --------------------------------
+
+def test_引用カードは数値カードと同じ大きさで返る():
+    # compose_stage が穴の下側にそのまま貼るので、数値カードと同寸でないと
+    # 隙間やはみ出しが出る
+    img = render_quote("議員定数を四十五削減する", "第217回国会 予算委員会")
+    assert img.size[0] == SHORT_SIZE[0]
+    assert img.size[1] == HOLE_BOTTOM - (HOLE_TOP + PHOTO_H)
+
+
+def test_引用カードは25文字の引用でも警告なしに収まる(capsys):
+    # quote_excerpt の上限は25文字。上限ちょうどで切り捨てが起きてはいけない
+    render_quote("あ" * 25, "第217回国会 衆議院予算委員会 2025-11-20 野田佳彦")
+    out = capsys.readouterr().out
+    assert "引用が" not in out
+
+
+def test_引用カードは出典キャプションを持つ(capsys):
+    # 出典が長ければ数値カードと同じ流儀で折り返し＋警告になる
+    render_quote("短い引用", "参議院予算委員会 2026年8月1日 山田太郎議員の質疑" * 3)
+    out = capsys.readouterr().out
+    assert "出典" in out
+    assert "切り捨て" in out

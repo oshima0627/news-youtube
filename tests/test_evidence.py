@@ -40,6 +40,26 @@ def test_数値らしい文字を含まない図表値は認めない():
     assert is_admissible(_ev(quote="", figure="大幅に増加した")) is False
 
 
+def test_単位を伴わない数字だけの図表値は認めない():
+    # 数字が1文字でもあれば通す判定だと、統計表ID・ページ番号のように
+    # 「数量ではないが数字を含む文字列」が採用ゲートを通ってしまう
+    # （Task 4 で e-Stat 系統をまるごと外す原因になった穴）
+    assert is_admissible(_ev(quote="", figure="p2")) is False
+    assert is_admissible(_ev(quote="", figure="0003412345")) is False
+    assert is_admissible(_ev(quote="", figure="表 12")) is False
+
+
+def test_調査年度は数値として認めない():
+    # 統計表メタデータの調査年度が「具体的な数値」として通ると、
+    # 上と同じ穴が開く
+    assert is_admissible(_ev(quote="", figure="2024年度")) is False
+
+
+def test_単位を伴う数量は認める():
+    for figure in ("45議席", "1,234人", "3.5%", "12兆円", "30％減", "５件"):
+        assert is_admissible(_ev(quote="", figure=figure)) is True, figure
+
+
 def test_サブドメイン偽装を拒否する():
     # kokkai.ndl.go.jp を偽った悪意あるサブドメイン（kokkai.ndl.go.jp.evil.com）は不採用
     # endswith(".go.jp") は False になるため、ホスト検証が機能していることを確認
@@ -140,6 +160,99 @@ class _FakeResponse:
 
     def json(self):
         return self._payload
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    """リトライのバックオフでテストを待たせない。"""
+    from scripts import evidence as evidence_module
+    monkeypatch.setattr(evidence_module.time, "sleep", lambda s: None)
+
+
+def test_search_speechesは一過性の失敗をリトライして成功を返す(monkeypatch):
+    # 系統が国会会議録の1つしか無いため、1回の 5xx がそのまま
+    # 「全系統ダウン」として run_daily の中止判断まで届いてしまう。
+    # 送出する前にここで粘る（I2）。
+    from scripts import evidence as evidence_module
+
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+    attempts = []
+
+    def flaky_get(url, timeout=None, params=None):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError("503 Server Error")
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(evidence_module.requests, "get", flaky_get)
+
+    got = evidence_module.search_speeches("議員定数", limit=3)
+
+    assert len(attempts) == 3
+    assert len(got) == 1
+
+
+def test_search_speechesはリトライを使い切ったら最後の例外を送出する(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    attempts = []
+
+    def always_fail(url, timeout=None, params=None):
+        attempts.append(1)
+        raise RuntimeError("504 Gateway Timeout")
+
+    monkeypatch.setattr(evidence_module.requests, "get", always_fail)
+
+    with pytest.raises(RuntimeError, match="504"):
+        evidence_module.search_speeches("議員定数")
+
+    assert len(attempts) == evidence_module.RETRY_ATTEMPTS
+
+
+def test_search_speechesは成功したらリトライしない(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    attempts = []
+
+    def ok_get(url, timeout=None, params=None):
+        attempts.append(1)
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", ok_get)
+    evidence_module.search_speeches("議員定数")
+
+    assert len(attempts) == 1
+
+
+def test_build_recipeは候補と根拠から再現可能なレシピを作る():
+    # run_daily.py と verify_source.py が同じ形のレシピを別々に組み立てて
+    # いると、片方だけ形が変わったときに再現できないレシピが混ざる
+    from scripts.evidence import build_recipe
+
+    ev = _ev()
+    got = build_recipe(
+        {"id": "abc", "title": "見出し", "keyword": "議員定数", "category": "政治"}, ev)
+
+    assert got == {
+        "id": "abc",
+        "headline": "見出し",
+        "keyword": "議員定数",
+        "category": "政治",
+        "evidence": {
+            "kind": ev.kind,
+            "source_url": ev.source_url,
+            "figure": ev.figure,
+            "quote": ev.quote,
+            "context": ev.context,
+        },
+    }
+
+
+def test_run_dailyとverify_sourceは同じbuild_recipeを使う():
+    from scripts import evidence, run_daily, verify_source
+
+    assert run_daily.build_recipe is evidence.build_recipe
+    assert verify_source.build_recipe is evidence.build_recipe
 
 
 def test_search_speechesが正しいパラメータでAPIを呼ぶ(monkeypatch):

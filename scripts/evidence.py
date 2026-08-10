@@ -10,7 +10,8 @@ YouTube の量産型コンテンツ判定と、完全自動での事実誤認の
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 
 import requests
@@ -20,7 +21,25 @@ import requests
 EVIDENCE_HOST_SUFFIX = ".go.jp"
 
 MIN_QUOTE_CHARS = 12
-_FIGURE_RE = re.compile(r"[0-9０-９]")
+
+# 「具体的な数値」の判定。数字が1文字でもあれば通す判定にしていると、
+# 統計表ID（"0003412345"）やページ番号（"p2"）、調査年度のように
+# **数量ではないが数字を含む文字列**が採用ゲートを通ってしまう
+# （Task 4 で e-Stat 系統をまるごと外す原因になったのと同じ穴）。
+# そこで「数字（桁区切り・小数点を含んでよい）＋数量の単位」という形を必ず求める。
+#
+# 単位には「年」「月」「日」を**入れない**。これらは数量ではなく時点を表すため、
+# 統計表メタデータの調査年度（"2024年度"）がそのまま数値として通ってしまい、
+# 上と同じ穴が開く。尺・期間として使いたい「時間」「分間」「秒」は量なので入れる。
+_FIGURE_UNITS = (
+    r"%|％|割|厘|倍|ポイント|pt|"
+    r"人|名|世帯|円|銭|ドル|ユーロ|元|ウォン|"
+    r"件|回|票|議席|席|個|本|台|隻|機|社|校|カ国|か国|箇国|箇所|カ所|か所|"
+    r"時間|分間|秒|"
+    r"万|億|兆|千|百|キロ|メートル|km|kg|トン|リットル|℃|度"
+)
+_FIGURE_RE = re.compile(
+    rf"[0-9０-９][0-9０-９,，.．]*\s*(?:{_FIGURE_UNITS})")
 
 
 @dataclass(frozen=True)
@@ -46,8 +65,33 @@ def is_admissible(ev: Evidence) -> bool:
     return has_quote or has_figure
 
 
+def build_recipe(candidate: dict, ev: Evidence) -> dict:
+    """候補 + 根拠から recipes/<id>.json の中身を組み立てる。
+
+    `recipes/<id>.json` は「これさえ残っていれば動画を作り直せる」再現の単位
+    なので、書き出す側が2箇所（run_daily.py と verify_source.py）に分かれて
+    いると片方だけ形が変わったときに再現できないレシピが混ざる。
+    組み立てはここ1箇所に置き、両方から呼ぶ。
+    """
+    return {
+        "id": candidate["id"],
+        "headline": candidate["title"],
+        "keyword": candidate["keyword"],
+        "category": candidate["category"],
+        "evidence": asdict(ev),
+    }
+
+
 KOKKAI_ENDPOINT = "https://kokkai.ndl.go.jp/api/speech"
 TIMEOUT = 20
+
+# 一過性の失敗（5xx・タイムアウト）で日全体を落とさないためのリトライ。
+# 系統が国会会議録の1つしか無い今、search_speeches が1回落ちることは
+# collect() から見れば「全系統ダウン」と同じ意味になり、run_daily.py 側の
+# 中止判断まで一直線につながる。候補20件を逐次叩く以上、5xx が1回混ざる
+# 確率は無視できないので、送出する前にここで数回粘る。
+RETRY_ATTEMPTS = 3          # 初回 + リトライ2回
+RETRY_BACKOFF_SECONDS = 1.0  # 1秒 → 2秒 の指数バックオフ
 
 
 def parse_speeches(payload: dict) -> list[Evidence]:
@@ -86,14 +130,30 @@ def parse_speeches(payload: dict) -> list[Evidence]:
 
 
 def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
-    """国会会議録を全文検索する。認証キーは不要。"""
-    r = requests.get(KOKKAI_ENDPOINT, timeout=TIMEOUT, params={
-        "any": keyword,
-        "recordPacking": "json",
-        "maximumRecords": min(limit, 100),
-    })
-    r.raise_for_status()
-    return parse_speeches(r.json())
+    """国会会議録を全文検索する。認証キーは不要。
+
+    一過性の失敗（5xx・タイムアウト等）は RETRY_ATTEMPTS 回まで指数バックオフ
+    で粘り、それでも駄目なときだけ最後の例外を送出する。
+    """
+    last: Exception | None = None
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            r = requests.get(KOKKAI_ENDPOINT, timeout=TIMEOUT, params={
+                "any": keyword,
+                "recordPacking": "json",
+                "maximumRecords": min(limit, 100),
+            })
+            r.raise_for_status()
+            return parse_speeches(r.json())
+        except Exception as e:            # noqa: BLE001 — 通信・パースの一過性失敗を再試行する
+            last = e
+            if attempt == RETRY_ATTEMPTS - 1:
+                break
+            wait = RETRY_BACKOFF_SECONDS * (2 ** attempt)
+            print(f"! 国会会議録APIの取得に失敗しました（{wait:.0f}秒後に再試行 "
+                  f"{attempt + 2}/{RETRY_ATTEMPTS}）: {e}")
+            time.sleep(wait)
+    raise last                             # type: ignore[misc]
 
 
 class EvidenceSourcesUnavailable(RuntimeError):

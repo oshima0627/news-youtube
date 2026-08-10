@@ -16,6 +16,11 @@
   - 画像（photo.jpg / license.json）が無い題材はその場で分かるメッセージで飛ばす
   - 予約枠を過ぎてから完成した題材は予約せず private のまま残し、既出には入れる
   - --schedule に渡す値が対象枠のISO8601文字列と一致する
+  - 引用カードの文言が一次資料の逐語引用の部分文字列でなければ機械抽出に差し替える
+  - 候補が0件／収集そのものが失敗した日は環境不備として非0終了する
+  - upload成功後に --schedule が落ちても既出に入れる（翌日の重複投稿を防ぐ）
+  - チャンネル取り違え（終了コード3）は環境不備として即座に中止する
+  - レシピは画像が揃った題材についてのみ書き出す
 """
 
 from __future__ import annotations
@@ -31,26 +36,34 @@ from scripts import run_daily
 from scripts.evidence import Evidence, EvidenceSourcesUnavailable
 from scripts.script_writer import Script, ScriptGenerationRejected, ScriptWriterUnavailable
 
+JST = run_daily.JST
+
+QUOTE = "これは十二文字以上ある逐語引用のダミーです。"
+
 EVIDENCE = Evidence(
     kind="speech",
     source_url="https://kokkai.ndl.go.jp/#/detail?x=1",
     figure="",
-    quote="これは十二文字以上ある逐語引用のダミーです。",
+    quote=QUOTE,
     context="第217回国会 衆議院予算委員会 2026-08-10 テスト太郎",
 )
 
 # 実行中の実時刻に依存しないよう、枠は固定日の時刻で表し、run_daily.datetime を
 # 凍結して比較する。BEFORE_SLOTS はどちらの枠（07:30/18:30）よりも前。
-BEFORE_SLOTS = datetime(2026, 8, 11, 6, 5)
-SLOT_MORNING = datetime(2026, 8, 11, 7, 30)
-SLOT_EVENING = datetime(2026, 8, 11, 18, 30)
+# JST を明示する（run_daily は datetime.now(JST) で比較し slot.isoformat() を
+# --schedule に渡すため、naive のままだとオフセットが落ちる）。
+BEFORE_SLOTS = datetime(2026, 8, 11, 6, 5, tzinfo=JST)
+SLOT_MORNING = datetime(2026, 8, 11, 7, 30, tzinfo=JST)
+SLOT_EVENING = datetime(2026, 8, 11, 18, 30, tzinfo=JST)
 
 
-def _script(title: str = "テストタイトル") -> Script:
+def _script(title: str = "テストタイトル", quote_excerpt: str = "十二文字以上ある逐語引用") -> Script:
     return Script(
         title=title,
         headline="見出し",
         narration="ナレーション本文。" * 10,
+        subtitle="字幕に出す要点",
+        quote_excerpt=quote_excerpt,
         figure_label="件数",
         figure_value="1件",
         tags=["政治", "国会"],
@@ -332,12 +345,15 @@ def test_1本の失敗が当日全体を落とさない(tmp_path, monkeypatch, c
     assert seen == ["ok"]
 
 
-def test_一次資料の取得元が全滅したら環境不備として中止する(tmp_path, monkeypatch, capsys):
+def test_一次資料の取得が連続3件失敗したら環境不備として中止する(tmp_path, monkeypatch, capsys):
+    # 系統が国会会議録の1つしか無いため、1回の HTTP 失敗がそのまま
+    # EvidenceSourcesUnavailable になる。1件目で中止すると 5xx が1回混ざった
+    # だけでその日が0本になるので、連続 EVIDENCE_FAILURE_LIMIT 件で初めて中止する。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
     monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
 
-    cands = [_candidate("first"), _candidate("second")]
+    cands = [_candidate(f"c{i}", f"題材{i}") for i in range(5)]
     _write_candidates(cands, work)
     for c in cands:
         _prepare_photo(work / c["id"])
@@ -362,9 +378,64 @@ def test_一次資料の取得元が全滅したら環境不備として中止�
     err = capsys.readouterr().err
     assert "中止します" in err
     assert "接続できません" in err
-    # 1件目で中止するので2件目には手を付けない
-    assert collect_calls == ["題材タイトル"]
+    # 3件目で中止するので4件目以降には手を付けない
+    assert collect_calls == ["題材0", "題材1", "題材2"]
+    assert len(collect_calls) == run_daily.EVIDENCE_FAILURE_LIMIT
     assert fake_run.upload_calls() == []
+
+
+def test_一次資料の取得が1回失敗しても次の候補へ進む(tmp_path, monkeypatch, capsys):
+    # 一過性の 5xx が1回混ざっただけで日全体を落とさない（I2 の本題）。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    flaky = _candidate("flaky", "一時的に失敗")
+    ok = _candidate("ok", "成功する題材")
+    _write_candidates([flaky, ok], work)
+    _prepare_photo(work / flaky["id"])
+    _prepare_photo(work / ok["id"])
+
+    def fake_collect(keyword):
+        if keyword == "一時的に失敗":
+            raise EvidenceSourcesUnavailable("503 Server Error（テスト用）")
+        return [EVIDENCE]
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "collect", fake_collect)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()          # SystemExit は起きない
+
+    out = capsys.readouterr().out
+    assert "連続 1/3 件目" in out
+    assert "本日 1/1 本" in out
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == ["ok"]
+
+
+def test_全候補で一次資料の取得に失敗したら中止する(tmp_path, monkeypatch, capsys):
+    # 候補が EVIDENCE_FAILURE_LIMIT 件に満たない日でも、一度も取得に成功して
+    # いないなら「今日は題材が無かった」ではなく環境不備。静かな 0/1 本で
+    # 終わらせない。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+
+    _write_candidates([_candidate("only1")], work)
+
+    fake_run = FakeRun()
+    monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: (_ for _ in ()).throw(
+        EvidenceSourcesUnavailable("Connection refused（テスト用）")))
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    assert "全候補" in capsys.readouterr().err
 
 
 def test_台本生成が環境不備で失敗したら即座に中止する(tmp_path, monkeypatch, capsys):
@@ -561,7 +632,9 @@ def test_0本が3日続くと警告が出る(tmp_path, monkeypatch, capsys):
     slots = [SLOT_MORNING]
     monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
 
-    _write_candidates([], work)
+    # 候補は取れているが根拠が無かった日（＝正常系の0本）。候補0件は
+    # 環境不備として非0終了するので、streak の対象にはならない。
+    _write_candidates([_candidate("nofound")], work)
 
     fake_run = FakeRun()
     monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
@@ -574,6 +647,216 @@ def test_0本が3日続くと警告が出る(tmp_path, monkeypatch, capsys):
     assert "3日続けて0本です" in out
     streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
     assert streak["days"] == 3
+
+
+# --- C1: 引用カードの文言が一次資料に由来することの保証 ------------------
+
+def test_引用カードの文言が逐語引用の部分文字列ならそのまま使う():
+    script = _script(quote_excerpt="十二文字以上ある逐語引用")
+    got = run_daily.ensure_grounded_card(script, EVIDENCE.__dict__)
+    assert got.quote_excerpt == "十二文字以上ある逐語引用"
+
+
+def test_引用カードの文言が逐語引用に無ければ機械抽出に差し替える(capsys):
+    # ここが破れると「モデルが作った文言に一次資料の出典キャプションが付く」。
+    script = _script(quote_excerpt="一次資料には一切書かれていない捏造の一節")
+    got = run_daily.ensure_grounded_card(script, EVIDENCE.__dict__)
+
+    assert got.quote_excerpt != script.quote_excerpt
+    assert got.quote_excerpt in QUOTE                    # 逐語引用に必ず含まれる
+    assert got.quote_excerpt == QUOTE[:run_daily.QUOTE_EXCERPT_MAX_CHARS]
+    out = capsys.readouterr().out
+    assert "差し替え" in out or "機械的に抜き出します" in out
+
+
+def test_引用カードの文言が空でも機械抽出に差し替える():
+    # 空文字はどんな文字列の部分文字列でもあるので、素通しさせない
+    got = run_daily.ensure_grounded_card(_script(quote_excerpt=""), EVIDENCE.__dict__)
+    assert got.quote_excerpt == QUOTE[:run_daily.QUOTE_EXCERPT_MAX_CHARS]
+
+
+def test_figureがある一次資料では引用の検証をせず数値カードのまま通す(capsys):
+    # 数値カードの値は一次資料由来なので検証の対象外。ここで差し替えを
+    # 走らせると、統計系統が戻ったときに数値カードが壊れる。
+    ev = dict(EVIDENCE.__dict__, figure="関西空港便が30%減")
+    script = _script(quote_excerpt="一次資料に無い文字列")
+    got = run_daily.ensure_grounded_card(script, ev)
+
+    assert got is script                                  # 何も差し替えていない
+    assert capsys.readouterr().out == ""
+
+
+def test_書き出すscript_jsonの引用が一次資料の部分文字列になっている(tmp_path, monkeypatch):
+    # ensure_grounded_card が build() より前に効いていることを実際の経路で確認する。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cand = _candidate("only1")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    seen_at_build: dict = {}
+
+    def fake_build(workdir: Path):
+        seen_at_build.update(
+            json.loads((workdir / "script.json").read_text(encoding="utf-8")))
+        return workdir / "video.mp4"
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "write",
+                        lambda recipe: _script(quote_excerpt="捏造された数字と文言"))
+    monkeypatch.setattr(run_daily, "build", fake_build)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert seen_at_build["quote_excerpt"] in QUOTE
+
+
+# --- I1: 候補0件・収集失敗 -----------------------------------------------
+
+def test_候補が0件なら環境不備として非0終了する(tmp_path, monkeypatch, capsys):
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _write_candidates([], work)
+
+    monkeypatch.setattr(run_daily.subprocess, "run", FakeRun())
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: [])
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    assert "候補が1件もありません" in capsys.readouterr().err
+    # 「0本の日」ではなく環境不備なので streak には数えない
+    assert not (state / "empty_streak.json").exists()
+
+
+def test_collect_newsが非0終了したら日次実行を中止する(tmp_path, monkeypatch, capsys):
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+
+    monkeypatch.setattr(run_daily.subprocess, "run",
+                        FakeRun(fail_for={"collect_news.py"}))
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    assert "候補の収集に失敗しました" in capsys.readouterr().err
+
+
+# --- I3: upload成功後の失敗で重複投稿しない -------------------------------
+
+def test_upload成功後にscheduleが落ちても既出に入れる(tmp_path, monkeypatch, capsys):
+    # 既出に入れないと、翌日また同じ題材を作って**もう1本**アップロードする
+    # （upload_youtube.py に重複防止が無い）。stuck_private と同じ扱い。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cand = _candidate("only1")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    # --schedule を含む2回目の呼び出しだけ失敗させる
+    fake_run = _mock_success_path(monkeypatch, fail_for={"--schedule"})
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    assert len(fake_run.upload_calls()) == 2       # 1回目は成功、2回目で失敗
+    out = capsys.readouterr().out
+    assert "アップロード自体は成功" in out
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == ["only1"]
+
+
+def test_uploadの1回目で落ちた題材は既出に入れない(tmp_path, monkeypatch):
+    # こちらは YouTube 上に何も残っていないので、次回また拾えるようにする
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cand = _candidate("only1")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    _mock_success_path(monkeypatch, fail_for={str(work / cand["id"])})
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == []
+
+
+# --- I4: チャンネル取り違え ------------------------------------------------
+
+def test_チャンネル取り違えは環境不備として即座に中止する(tmp_path, monkeypatch, capsys):
+    # token.json が別チャンネルだと全候補で同じ失敗を繰り返し、
+    # 終了コード0の「本日 0/2 本」になってしまう。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cands = [_candidate("first"), _candidate("second")]
+    _write_candidates(cands, work)
+    for c in cands:
+        _prepare_photo(work / c["id"])
+
+    class _MismatchRun(FakeRun):
+        def __call__(self, cmd, **kwargs):
+            self.calls.append(list(cmd))
+            if any("upload_youtube.py" in str(x) for x in cmd):
+                raise subprocess.CalledProcessError(
+                    run_daily.EXIT_CHANNEL_MISMATCH, cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+
+    fake_run = _MismatchRun()
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "チャンネル" in err
+    assert "中止します" in err
+    # 1件目で中止するので2件目のアップロードは試みない
+    assert len(fake_run.upload_calls()) == 1
+    # 1回目のuploadも失敗しているので既出には入れない
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == []
+
+
+# --- Minor: レシピの書き出し位置 -------------------------------------------
+
+def test_画像未準備の題材のレシピは書き出さない(tmp_path, monkeypatch):
+    # recipes/ は「再現の単位」であって「検討した候補の記録」ではない。
+    # 一度も動画にならなかった題材のレシピが溜まり続けないようにする。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    no_photo = _candidate("no_photo")
+    ok = _candidate("ok")
+    _write_candidates([no_photo, ok], work)
+    _prepare_photo(work / ok["id"])
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    assert not (recipes / "no_photo.json").exists()
+    assert (recipes / "ok.json").exists()
 
 
 def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypatch):

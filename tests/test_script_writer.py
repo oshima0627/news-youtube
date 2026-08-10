@@ -42,6 +42,35 @@ def test_尺の指示が入る():
     assert "350" in got and "400" in got
 
 
+def test_字幕は40文字以内であることを指示する():
+    # ナレーション全文を字幕バンドに流し込むと4行しか描画されず、
+    # 毎ビルド切り捨て警告が出る（C2）
+    got = build_prompt(RECIPE)
+    assert "subtitle" in got
+    assert "40文字以内" in got
+
+
+def test_逐語引用があるとき言い換え禁止の指示が入る():
+    # 画面に出るのは quote_excerpt そのもの。言い換えると一次資料の出典
+    # キャプションが付いた文字列が一次資料と一致しなくなる（C1）
+    got = build_prompt(RECIPE)
+    assert "quote_excerpt" in got
+    assert "そのまま" in got
+
+
+def test_figureが空なら数値カードの指示は出さない():
+    # 現状の唯一の系統（国会会議録）は figure が常に空。ここで数値を
+    # 求めると、モデルが作った値に一次資料の出典が付く原因になる
+    assert "figure_value" not in build_prompt(RECIPE)
+
+
+def test_figureがあるときだけ数値カードの指示が入る():
+    recipe = dict(RECIPE, evidence=dict(RECIPE["evidence"], figure="関西空港便が30%減"))
+    got = build_prompt(recipe)
+    assert "figure_value" in got
+    assert "30%減" in got
+
+
 # --- write() の失敗系。実APIは一切呼ばず、Anthropic クライアントを差し替えて検証する ---
 # write() は毎朝の無人実行から呼ばれる。失敗したときログから原因が読み取れないと、
 # 投稿が止まっていることに何日も気づけない。ここでは実際にAPIを叩かずに、
@@ -129,6 +158,8 @@ def test_正常時はScriptインスタンスが返る(monkeypatch):
         title="議員定数45削減、その中身は",
         headline="議員定数45削減の中身",
         narration="ナレーション本文。" * 20,
+        subtitle="議員定数45削減の中身を読む",
+        quote_excerpt="議員定数を四十五削減する",
         figure_label="削減議席数",
         figure_value="45議席",
         tags=["政治", "国会", "議員定数"],

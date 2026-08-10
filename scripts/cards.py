@@ -2,11 +2,18 @@
 """縦型ショートの描画。
 
   上部の帯   見出し（2行まで）
-  中央の穴   上に実写、下に数値カード
-  下部の帯   ナレーションの要点を字幕で
+  中央の穴   上に実写、下に根拠カード（数値カード or 引用カード）
+  下部の帯   要点を字幕で（4行まで）
 
-数値カードが「解説」の実体になる。これが無いと画像スライドショーと
+根拠カードが「解説」の実体になる。これが無いと画像スライドショーと
 見分けがつかず、量産型コンテンツの判定に近づく。
+
+カードには必ず一次資料の出典キャプションが入る。したがって
+**カードに出す文字列は一次資料に由来していなければならない。**
+一次資料が「発言」のとき（＝ Evidence.figure が空のとき）は、値をモデルに
+作らせる数値カード（render_figure）ではなく、逐語引用をそのまま出す
+引用カード（render_quote）を使う。捏造された値に一次資料の出典が付く、
+という設計方針の破れを画面側でも塞ぐため。
 """
 
 from __future__ import annotations
@@ -58,8 +65,30 @@ def render_frame(headline: str, subtitle: str) -> Image.Image:
     return img
 
 
+SOURCE_MAX_LINES = 2
+QUOTE_MAX_LINES = 2
+
+
+def _draw_source(d: ImageDraw.ImageDraw, source: str, m: int, avail: int) -> None:
+    """カード下端の出典キャプション。数値カード・引用カードで共通。"""
+    sf = pick_font(34)
+    source_lines = wrap(d, f"出典: {source}", sf, avail)
+    if len(source_lines) > SOURCE_MAX_LINES:
+        print(f"! 出典が{len(source_lines) - SOURCE_MAX_LINES}行溢れて切り捨てられました: {source[:20]}")
+    shown = source_lines[:SOURCE_MAX_LINES]
+    y = FIGURE_H - 56 - (len(shown) - 1) * 40
+    for ln in shown:
+        d.text((m, y), ln, font=sf, fill=MUTED)
+        y += 40
+
+
 def render_figure(label: str, value: str, source: str) -> Image.Image:
     """数値カード。穴の下側にぴったり収まる大きさで返す。
+
+    **一次資料が実際の数値（Evidence.figure）を持っている系統でのみ使うこと。**
+    value は台本生成モデルの出力なので、figure が空の系統（発言）で使うと
+    モデルが作った数値に一次資料の出典キャプションが付く。その場合は
+    `render_quote()` を使う。
 
     label / value / source はいずれもカード幅からはみ出す可能性がある
     （source は一次資料の context＝会議名＋日付＋発言者が入るため特に長くなる）。
@@ -87,14 +116,45 @@ def render_figure(label: str, value: str, source: str) -> Image.Image:
         print(f"! 数値が幅に収まらず切り詰められました: {value[:20]}")
     d.text((m, 92), value_text, font=f, fill=INK)
 
-    sf = pick_font(34)
-    max_source_lines = 2
-    source_lines = wrap(d, f"出典: {source}", sf, avail)
-    if len(source_lines) > max_source_lines:
-        print(f"! 出典が{len(source_lines) - max_source_lines}行溢れて切り捨てられました: {source[:20]}")
-    shown = source_lines[:max_source_lines]
-    y = FIGURE_H - 56 - (len(shown) - 1) * 40
-    for ln in shown:
-        d.text((m, y), ln, font=sf, fill=MUTED)
-        y += 40
+    _draw_source(d, source, m, avail)
+    return img
+
+
+def render_quote(text: str, source: str) -> Image.Image:
+    """引用カード。数値カードと同じ大きさ・同じ出典キャプションの流儀で返す。
+
+    一次資料が「発言」のときに使う。画面に出すのは逐語引用そのもの（かぎ括弧で
+    囲む）なので、出典キャプションが指す一次資料と画面の文字列が必ず一致する。
+    数値カードのように「モデルが作った値に一次資料の出典が付く」余地が無い。
+
+    text は1行に収まらないことを前提に、2行に収まる最大のフォントサイズを
+    探して折り返す（`fit_font()` は1行前提なので使えない）。
+    """
+    w = SHORT_SIZE[0]
+    img = Image.new("RGB", (w, FIGURE_H), NAVY)
+    d = ImageDraw.Draw(img)
+    m = int(w * 0.06)
+    avail = w - m * 2
+
+    d.rectangle([0, 0, w, 6], fill=RED)
+
+    d.text((m, 24), "一次資料より", font=pick_font(36), fill=MUTED)
+
+    body = f"「{text}」"
+    size = 60
+    f = pick_font(size)
+    lines = wrap(d, body, f, avail)
+    while len(lines) > QUOTE_MAX_LINES and size > 34:
+        size -= 4
+        f = pick_font(size)
+        lines = wrap(d, body, f, avail)
+    if len(lines) > QUOTE_MAX_LINES:
+        print(f"! 引用が{len(lines) - QUOTE_MAX_LINES}行溢れて切り捨てられました: {text[:20]}")
+
+    y = 76
+    for ln in lines[:QUOTE_MAX_LINES]:
+        d.text((m, y), ln, font=f, fill=INK)
+        y += int(f.size * 1.28)
+
+    _draw_source(d, source, m, avail)
     return img
