@@ -28,6 +28,7 @@ CLI_ENTRYPOINTS = (
     "build_short.py",
     "upload_youtube.py",
     "unpublish.py",
+    "run_daily.py",
 )
 
 
