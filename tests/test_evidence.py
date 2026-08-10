@@ -1,0 +1,353 @@
+import pytest
+
+from scripts.evidence import Evidence, EvidenceSourcesUnavailable, collect, is_admissible
+
+
+def _ev(**kw) -> Evidence:
+    base = dict(kind="speech", source_url="https://kokkai.ndl.go.jp/#/detail?x=1",
+                figure="", quote="議員定数を45削減すると申し上げた",
+                context="第217回国会 予算委員会 2025-11-20")
+    base.update(kw)
+    return Evidence(**base)
+
+
+def test_逐語引用と出典があれば採用する():
+    assert is_admissible(_ev()) is True
+
+
+def test_数値と出典があれば採用する():
+    assert is_admissible(_ev(quote="", figure="関西空港便が30%減")) is True
+
+
+def test_出典URLが無ければ不採用():
+    assert is_admissible(_ev(source_url="")) is False
+
+
+def test_数値も引用も無ければ不採用():
+    assert is_admissible(_ev(quote="", figure="")) is False
+
+
+def test_出典URLがホワイトリスト外なら不採用():
+    # 一次資料以外を根拠にすると、その時点で「解説」ではなく「転載」になる
+    assert is_admissible(_ev(source_url="https://example.com/news/1")) is False
+
+
+def test_引用が短すぎるものは根拠として認めない():
+    assert is_admissible(_ev(quote="そうだ")) is False
+
+
+def test_数値らしい文字を含まない図表値は認めない():
+    assert is_admissible(_ev(quote="", figure="大幅に増加した")) is False
+
+
+def test_単位を伴わない数字だけの図表値は認めない():
+    # 数字が1文字でもあれば通す判定だと、統計表ID・ページ番号のように
+    # 「数量ではないが数字を含む文字列」が採用ゲートを通ってしまう
+    # （Task 4 で e-Stat 系統をまるごと外す原因になった穴）
+    assert is_admissible(_ev(quote="", figure="p2")) is False
+    assert is_admissible(_ev(quote="", figure="0003412345")) is False
+    assert is_admissible(_ev(quote="", figure="表 12")) is False
+
+
+def test_調査年度は数値として認めない():
+    # 統計表メタデータの調査年度が「具体的な数値」として通ると、
+    # 上と同じ穴が開く
+    assert is_admissible(_ev(quote="", figure="2024年度")) is False
+
+
+def test_単位を伴う数量は認める():
+    for figure in ("45議席", "1,234人", "3.5%", "12兆円", "30％減", "５件"):
+        assert is_admissible(_ev(quote="", figure=figure)) is True, figure
+
+
+def test_サブドメイン偽装を拒否する():
+    # kokkai.ndl.go.jp を偽った悪意あるサブドメイン（kokkai.ndl.go.jp.evil.com）は不採用
+    # endswith(".go.jp") は False になるため、ホスト検証が機能していることを確認
+    assert is_admissible(_ev(source_url="https://kokkai.ndl.go.jp.evil.com/x")) is False
+
+
+def test_パスに紛れ込ませた偽装を拒否する():
+    # ホスト部分は example.com だが、パスに kokkai.ndl.go.jp を含ませた悪意あるURL
+    # urlparse().hostname は example.com を返すため、.go.jp チェックで不採用になることを確認
+    assert is_admissible(_ev(source_url="https://example.com/kokkai.ndl.go.jp/x")) is False
+
+
+def test_MIN_QUOTE_CHARS_の境界_11文字は不採用():
+    # MIN_QUOTE_CHARS = 12 なので、11文字は len(quote.strip()) < MIN_QUOTE_CHARS で不採用
+    assert is_admissible(_ev(quote="12345678901", figure="")) is False
+
+
+def test_MIN_QUOTE_CHARS_の境界_12文字は採用():
+    # MIN_QUOTE_CHARS = 12 なので、12文字は len(quote.strip()) >= MIN_QUOTE_CHARS で採用
+    assert is_admissible(_ev(quote="123456789012", figure="")) is True
+
+
+import json
+from pathlib import Path
+
+from scripts.evidence import parse_speeches
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_発言をEvidenceに変換する():
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+    got = parse_speeches(payload)
+
+    assert len(got) == 1                       # 短すぎる進行発言は落ちる
+    ev = got[0]
+    assert ev.kind == "speech"
+    assert ev.quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+    assert ev.source_url.startswith("https://kokkai.ndl.go.jp/")
+    assert "予算委員会" in ev.context
+    assert "野田佳彦" in ev.context
+    assert is_admissible(ev) is True
+
+
+def test_発言が空のレスポンスは空リストになる():
+    assert parse_speeches({"numberOfRecords": 0}) == []
+
+
+def test_フィールドが欠損していてもcontextが壊れない():
+    # session / nameOfHouse / nameOfMeeting / date が欠損した応答を想定
+    payload = {
+        "speechRecord": [
+            {
+                "speechID": "x",
+                "speaker": "野田佳彦",
+                "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+                "speechURL": "https://kokkai.ndl.go.jp/#/detail?x=1",
+            }
+        ]
+    }
+    got = parse_speeches(payload)
+
+    assert len(got) == 1
+    ev = got[0]
+    assert "None" not in ev.context
+    assert ev.context == "野田佳彦"          # 空要素は詰めて、余分な空白も残さない
+
+
+def test_speechRecordが単一オブジェクトでもリストとして扱う():
+    # 繰り返し要素が1件のとき、配列ではなくオブジェクト単体で返ってくる実装への対策
+    payload = {
+        "numberOfRecords": 1,
+        "speechRecord": {
+            "speechID": "121705261X00120251120_001",
+            "session": 217,
+            "nameOfHouse": "衆議院",
+            "nameOfMeeting": "予算委員会",
+            "date": "2025-11-20",
+            "speaker": "野田佳彦",
+            "speakerGroup": "立憲民主党",
+            "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+            "speechURL": "https://kokkai.ndl.go.jp/#/detail?minId=121705261X00120251120&spkNum=1",
+        },
+    }
+    got = parse_speeches(payload)
+
+    assert len(got) == 1
+    assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+    assert "予算委員会" in got[0].context
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    """リトライのバックオフでテストを待たせない。"""
+    from scripts import evidence as evidence_module
+    monkeypatch.setattr(evidence_module.time, "sleep", lambda s: None)
+
+
+def test_search_speechesは一過性の失敗をリトライして成功を返す(monkeypatch):
+    # 系統が国会会議録の1つしか無いため、1回の 5xx がそのまま
+    # 「全系統ダウン」として run_daily の中止判断まで届いてしまう。
+    # 送出する前にここで粘る（I2）。
+    from scripts import evidence as evidence_module
+
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+    attempts = []
+
+    def flaky_get(url, timeout=None, params=None):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError("503 Server Error")
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(evidence_module.requests, "get", flaky_get)
+
+    got = evidence_module.search_speeches("議員定数", limit=3)
+
+    assert len(attempts) == 3
+    assert len(got) == 1
+
+
+def test_search_speechesはリトライを使い切ったら最後の例外を送出する(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    attempts = []
+
+    def always_fail(url, timeout=None, params=None):
+        attempts.append(1)
+        raise RuntimeError("504 Gateway Timeout")
+
+    monkeypatch.setattr(evidence_module.requests, "get", always_fail)
+
+    with pytest.raises(RuntimeError, match="504"):
+        evidence_module.search_speeches("議員定数")
+
+    assert len(attempts) == evidence_module.RETRY_ATTEMPTS
+
+
+def test_search_speechesは成功したらリトライしない(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    attempts = []
+
+    def ok_get(url, timeout=None, params=None):
+        attempts.append(1)
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", ok_get)
+    evidence_module.search_speeches("議員定数")
+
+    assert len(attempts) == 1
+
+
+def test_build_recipeは候補と根拠から再現可能なレシピを作る():
+    # run_daily.py と verify_source.py が同じ形のレシピを別々に組み立てて
+    # いると、片方だけ形が変わったときに再現できないレシピが混ざる
+    from scripts.evidence import build_recipe
+
+    ev = _ev()
+    got = build_recipe(
+        {"id": "abc", "title": "見出し", "keyword": "議員定数", "category": "政治"}, ev)
+
+    assert got == {
+        "id": "abc",
+        "headline": "見出し",
+        "keyword": "議員定数",
+        "category": "政治",
+        "evidence": {
+            "kind": ev.kind,
+            "source_url": ev.source_url,
+            "figure": ev.figure,
+            "quote": ev.quote,
+            "context": ev.context,
+        },
+    }
+
+
+def test_run_dailyとverify_sourceは同じbuild_recipeを使う():
+    from scripts import evidence, run_daily, verify_source
+
+    assert run_daily.build_recipe is evidence.build_recipe
+    assert verify_source.build_recipe is evidence.build_recipe
+
+
+def test_search_speechesが正しいパラメータでAPIを呼ぶ(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    captured = {}
+
+    def fake_get(url, timeout=None, params=None):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        captured["params"] = params
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    evidence_module.search_speeches("議員定数", limit=3)
+
+    assert captured["url"] == evidence_module.KOKKAI_ENDPOINT
+    assert captured["params"]["any"] == "議員定数"
+    assert captured["params"]["recordPacking"] == "json"
+    assert captured["params"]["maximumRecords"] == 3
+
+
+def test_search_speechesのlimitが100件に丸められる(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    captured = {}
+
+    def fake_get(url, timeout=None, params=None):
+        captured["params"] = params
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    evidence_module.search_speeches("議員定数", limit=500)
+
+    assert captured["params"]["maximumRecords"] == 100
+
+
+def test_search_speechesがEvidenceのリストを返す(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+
+    def fake_get(url, timeout=None, params=None):
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    got = evidence_module.search_speeches("議員定数", limit=3)
+
+    assert len(got) == 1
+    assert isinstance(got[0], Evidence)
+    assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+
+
+def test_collectはsearch_speechesの結果をそのまま返す(monkeypatch):
+    # e-Stat 系統を外したことで collect() は search_speeches 単独になったが、
+    # 系統ごとに try/except で包む構造そのものは維持されている（後で系統を戻すため）。
+    # ここでは正常系として、その構造を壊さず結果が通ることを確認する。
+    ok = Evidence(kind="speech", source_url="https://kokkai.ndl.go.jp/#/x",
+                  figure="", quote="議員定数を四十五削減すると申し上げた",
+                  context="予算委員会")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches", lambda k, limit=10: [ok])
+
+    assert collect("議員定数") == [ok]
+
+
+def test_collectは全系統が例外で落ちたら環境不備の例外を送出する(monkeypatch):
+    # 現状は search_speeches の1系統のみなので、それが落ちる＝全系統が落ちたことになる。
+    # ここを空リストで返してしまうと、「採用条件を満たすものが無かった」（正常系）
+    # と「一次資料APIが疎通不能」（環境不備）が呼び出し側から区別できなくなる。
+    # 区別できないと run_daily.py は「見送り（根拠なし）」を全候補ぶん繰り返した末に
+    # 「本日 0/2 本」とだけ表示して、環境が壊れていることに気づけない。
+    def boom(*a, **kw):
+        raise RuntimeError("落ちている")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches", boom)
+
+    with pytest.raises(EvidenceSourcesUnavailable) as exc_info:
+        collect("議員定数")
+
+    assert "議員定数" in str(exc_info.value)
+    assert "落ちている" in str(exc_info.value)
+
+
+def test_collectは取得に成功したが採用条件を満たすものが無ければ空リストを返す(monkeypatch):
+    # 環境（API疎通）は正常で、単に該当する発言が無かった／採用ゲートを通らな
+    # かっただけのケース。この場合は例外にせず、従来どおり空リストを返す
+    # （EvidenceSourcesUnavailable と明確に区別する）。
+    not_admissible = Evidence(kind="speech", source_url="https://kokkai.ndl.go.jp/#/x",
+                              figure="", quote="次に。", context="予算委員会")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches",
+                        lambda k, limit=10: [not_admissible])
+
+    assert collect("議員定数") == []

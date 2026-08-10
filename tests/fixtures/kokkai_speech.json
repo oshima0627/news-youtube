@@ -1,0 +1,27 @@
+{
+  "numberOfRecords": 2,
+  "speechRecord": [
+    {
+      "speechID": "121705261X00120251120_001",
+      "session": 217,
+      "nameOfHouse": "衆議院",
+      "nameOfMeeting": "予算委員会",
+      "date": "2025-11-20",
+      "speaker": "野田佳彦",
+      "speakerGroup": "立憲民主党",
+      "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+      "speechURL": "https://kokkai.ndl.go.jp/#/detail?minId=121705261X00120251120&spkNum=1"
+    },
+    {
+      "speechID": "121705261X00120251120_002",
+      "session": 217,
+      "nameOfHouse": "衆議院",
+      "nameOfMeeting": "予算委員会",
+      "date": "2025-11-20",
+      "speaker": "委員長",
+      "speakerGroup": "",
+      "speech": "次に。",
+      "speechURL": "https://kokkai.ndl.go.jp/#/detail?minId=121705261X00120251120&spkNum=2"
+    }
+  ]
+}

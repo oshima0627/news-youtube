@@ -1365,8 +1365,13 @@ def test_数値カードは穴の下側の大きさで返る():
     assert img.size[1] == HOLE_BOTTOM - (HOLE_TOP + 659)
 
 
-def test_長い見出しでも例外にならない():
-    render_frame("あ" * 60, "い" * 80)
+def test_長い見出しでも帯からはみ出さない():
+    # 折り返して2行に切るので、帯の外に文字が出てはいけない
+    img = render_frame("あ" * 60, "い" * 80)
+    w, _ = SHORT_SIZE
+    # 穴の中央に文字が漏れていない（＝透過のまま）
+    assert img.getpixel((w // 2, (HOLE_TOP + HOLE_BOTTOM) // 2))[3] == 0
+    assert img.size == SHORT_SIZE
 ```
 
 - [ ] **Step 3: テストを実行して失敗を確認する**

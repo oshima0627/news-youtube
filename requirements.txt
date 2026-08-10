@@ -1,4 +1,8 @@
-anthropic
+# script_writer.py が client.messages.parse / output_format / parsed_output を
+# 使うため、これらが入ったバージョン以降を要求する。古い SDK だと
+# messages.parse そのものが無く AttributeError で毎朝落ちる。
+anthropic>=0.121
+pydantic
 pillow
 requests
 google-api-python-client
