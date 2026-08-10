@@ -68,22 +68,39 @@ RSSで題材を拾ったら、公開前に必ず一次資料を引きに行き�
 PC が日中落ちていても YouTube 側が定刻に公開するため、
 「完全自動なのに PC の稼働時間に縛られる」という弱点が消える。
 
+**画像（`fetch_photo.py`）だけは自動ステップではない。** 題材ごとに写る人物・
+場面が違い、ホワイトリストの中から適切な1枚を選ぶ判断が自動化できていないため、
+前日までに手で当てておく運用になっている（実装後の実測を反映）。
+
 ```
+（前日までに手動）
+  fetch_photo.py        ホワイトリストから実写取得＋ライセンス記録
+                        → work/<id>/photo.jpg + license.json
+
 06:00  run_daily.py
   │
   ├─ collect_news.py    RSS巡回 → 候補20件（seen.json で既出を除外）
+  │                     ※ subprocess で起動。全フィード失敗・候補0件は非0終了
   │
-  ├─ verify_source.py   ★採用ゲート
-  │      候補を上から順に、国会会議録API / e-Stat / 官庁報道発表に当てる
-  │      根拠（数値 or 逐語引用）＋出典URL が揃ったら採用、欠けたら次へ
-  │      → 2件そろった時点で打ち切り。そろわなければ本数を減らして続行
-  │
-  └─ 採用2件について、それぞれ
-       ├─ write_script.py   根拠データを渡して台本生成（60秒・話し言葉）
-       ├─ fetch_photo.py    ホワイトリストから実写取得＋ライセンス記録
-       ├─ build_short.py    図解カード生成 → VOICEVOX音声 → 1080x1920 合成
-       └─ upload_youtube.py private アップ → --schedule で 07:30 / 18:30 予約
+  └─ 候補を上から順に、当日の残り枠が埋まるまで
+       ├─ evidence.collect()      ★採用ゲート（直接 import）
+       │      国会会議録APIに当て、根拠（数値 or 逐語引用）＋出典URL が
+       │      揃ったら採用、欠けたら次の候補へ
+       ├─ 画像が無ければこの題材は見送り（上記の手動ステップ待ち）
+       ├─ script_writer.write()   根拠だけを渡して台本生成（直接 import）
+       ├─ narrate.synthesize()    VOICEVOX で音声合成
+       ├─ build_short.build()     根拠カード生成 → 1080x1920 合成
+       └─ upload_youtube.py       private アップ → --schedule で 07:30 / 18:30 予約
+                                  ※ subprocess で起動
 ```
+
+`run_daily.py` が `subprocess` で起動するのは `collect_news.py` と
+`upload_youtube.py` の2つだけ。採用ゲートと台本生成は
+`evidence.collect()` / `script_writer.write()` を**直接 import** して呼ぶ
+（「環境不備なので即中止」と「この題材固有なので次へ」を例外の型で見分ける必要が
+あり、終了コードだけでは足りないため）。
+`verify_source.py` と `write_script.py` は、同じ処理を手で1件ずつ確認するための
+単体CLIとして残してある（日次実行の経路には入らない）。
 
 ### ディレクトリ
 
@@ -115,7 +132,11 @@ NHK（`cat0`/`cat4`）と Yahoo!ニュースの公開RSSを巡回し、`seen.jso
 
 出力: `work/candidates.json`
 
-### verify_source.py — 採用ゲート
+### evidence.py — 採用ゲート（`verify_source.py` は単体CLI）
+
+判定の本体は `evidence.collect()`。日次実行は `run_daily.py` がこれを直接
+呼ぶ。`verify_source.py` は同じ処理を手で確認するための薄いCLIで、
+レシピの組み立て（`build_recipe()`）は両者で共有している。
 
 候補を上から順に3系統へ当てる。
 
@@ -132,7 +153,11 @@ NHK（`cat0`/`cat4`）と Yahoo!ニュースの公開RSSを巡回し、`seen.jso
 
 出力: `recipes/<id>.json`
 
-### fetch_photo.py — 取得元をホワイトリストで縛る
+### fetch_photo.py — 取得元をホワイトリストで縛る（**手動運用**）
+
+**このステップは自動では走らない。** `run_daily.py` は
+`work/<id>/photo.jpg` と `license.json` の有無を確認するだけで、
+無ければその題材を見送る。前日までにオーナーが手で当てておく。
 
 | 出所 | ライセンス | 条件 |
 | --- | --- | --- |
@@ -148,9 +173,9 @@ NHK（`cat0`/`cat4`）と Yahoo!ニュースの公開RSSを巡回し、`seen.jso
 
 出典: <https://www.kantei.go.jp/jp/terms.html>
 
-### write_script.py — 根拠だけを渡す
+### script_writer.py — 根拠だけを渡す（`write_script.py` は単体CLI）
 
-Claude API（`claude-opus-5`、adaptive thinking）に渡すのは `verify_source.py`
+Claude API（`claude-opus-5`、adaptive thinking）に渡すのは `evidence.collect()`
 が取った一次資料の抜粋のみで、RSSの本文は渡さない。
 
 60秒＝350〜400字の話し言葉で、「ニュースの要約」ではなく
@@ -164,8 +189,19 @@ Claude API（`claude-opus-5`、adaptive thinking）に渡すのは `verify_sourc
 `narrate.py` は VOICEVOX のローカルエンジン（HTTP API）で**青山龍星**を使う。
 既存2,845人の耳に合っている声を変える理由がないため継続する。
 
-`build_short.py` は 1080×1920 で、上に実写、中央に数値の図解カード、下に字幕。
+`build_short.py` は 1080×1920 で、上に実写、中央に根拠カード、下に字幕。
 描画は `tora-kirinuki` の `draw.py` / `cards.py` を流用する。
+
+根拠カードには必ず一次資料の出典キャプションが入るので、**カードに出す文字列は
+一次資料に由来していなければならない**。一次資料が数値を持つ系統（統計・公表）
+では数値カード（`render_figure`）、発言の系統（現状の唯一の系統）では逐語引用を
+そのまま出す引用カード（`render_quote`）を使う。発言系で数値カードを使うと、
+モデルが生成した値に一次資料の出典が付き、「一次資料が取れなければ公開しない」
+という設計方針がそこだけ破れる。
+
+字幕バンドに渡すのは `Script.subtitle`（40字以内）で、ナレーション全文ではない。
+字幕は4行（実測で60文字あまり）しか描画しないため、400字のナレーションを渡すと
+毎ビルド必ず切り捨て警告が出て、他の警告が埋もれる。
 
 出力: `work/<id>/voice.wav`, `work/<id>/video.mp4`
 
@@ -208,14 +244,30 @@ python scripts/unpublish.py --all-today  # 当日分を一括で引っ込める
 - **ゲートを誰も通らない日** — 本数を減らす。0本の日もあり得る仕様。
   ただし収益化要件が「90日で3本以上」なので、`state` に連続0本の日数を記録し、
   3日続いたら実行ログに警告を出す。
+- **RSSの障害** — フィードが1つでも生きていれば続行する。**全フィードが失敗**
+  または**候補が0件**なら、`collect_news.py` が原因を stderr に出して非0終了し、
+  `run_daily.py` はそれを環境不備として中止する（空の候補で静かに0本にしない）。
 - **一次資料APIの障害** — 落ちている系統だけスキップし、残る系統で判定を続ける。
-  3系統とも失敗したら当日は中止（根拠なしで作らない）。
+  全系統が失敗したら `EvidenceSourcesUnavailable`。ただし系統が1つしかない今は
+  「1回のタイムアウト」がそのまま「全系統ダウン」になるため、
+  `search_speeches` 側で指数バックオフの再試行を行い、`run_daily.py` は
+  **連続3候補で失敗**したときに初めて中止へ格上げする（1回の5xxで日を落とさない）。
 - **VOICEVOX未起動** — 起動確認し、無ければ自動起動を試みる。
   それでも駄目なら中止する。**無音の動画は上げない。**
 - **アップロード失敗** — `work/` を残して次回起動時にリトライ。
   API クォータは日10,000ユニットに対し `videos.insert` が1,600なので、
-  2本/日＝3,200で十分収まる。
+  2本/日＝3,200で十分収まる。ただし**1回目（private アップ）が成功した後**に
+  `--schedule` が落ちた場合は既出（`seen.json`）に入れる。入れないと翌日また
+  同じ題材を作って同じ動画をもう1本上げてしまう（`upload_youtube.py` に重複
+  防止が無い）。private のまま手動公開待ちになる方が実害が小さい。
 - **チャンネル取り違え** — `expected_channel_id` ガードを既存から流用する。
+  発動時は専用の終了コード **3** を返し、`run_daily.py` はこれを環境不備として
+  日次実行そのものを中止する。題材固有の失敗として次へ進むと、`token.json` が
+  別チャンネルに紐づいている日に全候補で同じ失敗を繰り返した末、終了コード0の
+  「本日 0/2 本」で終わって気づけない。
+- **公開後の緊急停止** — `unpublish.py --all-today` は1本の失敗でループを
+  止めない。失敗は記録して続行し、最後に「N件中M件成功」を出して失敗があれば
+  非0終了する（唯一の保険が途中で止まると、残りが public のまま取り残される）。
 
 ## テスト
 
@@ -241,4 +293,6 @@ pytest。`tora-kirinuki` と同じ流儀。検証の中心は3つに絞る。
 
 ## 状態
 
-設計のみ。実装未着手。
+実装済み（ブランチ `feat/pipeline`）。タスクスケジューラへの登録と
+YouTube の初回認証（`--auth-only`）はオーナー本人の操作として未実施。
+運用手順は [`docs/daily-workflow.md`](../../daily-workflow.md) を参照。

@@ -55,12 +55,17 @@ PC が日中落ちていても YouTube 側が定刻に公開する。
 
 - **環境不備 → 日次実行そのものをその場で中止**（原因がログにそのまま出る、
   終了コードは1）。次に該当する:
-  - `evidence.collect()` が `EvidenceSourcesUnavailable` を送出したとき
-    （国会会議録APIなど一次資料の取得元が1系統も応答しなかった場合。
-    「根拠が無かった」という正常系の空リストとは区別されている）
+  - `collect_news.py` が非0終了したとき、または候補が0件だったとき
+    （全RSSフィードの取得失敗など）
+  - `evidence.collect()` の `EvidenceSourcesUnavailable` が**連続3候補**で
+    起きたとき、または全候補で起きて一度も取得に成功しなかったとき。
+    系統が国会会議録の1つしか無いため1回のタイムアウトでもこの例外になるので、
+    1件では中止しない（`search_speeches` 側でも指数バックオフで再試行する）
   - `script_writer.write()` が `ScriptWriterUnavailable` を送出したとき
     （`ANTHROPIC_API_KEY` 未設定・無効など）
   - `narrate.synthesize()` が VOICEVOX に接続できず例外を送出したとき
+  - `upload_youtube.py` が終了コード**3**（チャンネル取り違え）を返したとき。
+    `token.json` が別チャンネルに紐づいている状態で、どの題材でも必ず失敗する
 
   これらはどの題材で起きても同じ理由で確実に失敗するため、他の候補を
   試しても無駄だと分かっている。飛ばして次に進む設計のままだと、全候補ぶん
@@ -73,7 +78,13 @@ PC が日中落ちていても YouTube 側が定刻に公開する。
     政治ニュースを扱う以上、特定の題材の内容だけが理由で起こりうる）
   - 画像未準備（下記「画像」参照）
   - `build_short.build()` の失敗（ffmpeg関連など）
-  - `upload_youtube.py` の一時的なエラー
+  - `upload_youtube.py` の一時的なエラー（取り違えの終了コード3は除く）。
+    ただし**1回目の private アップロードが成功した後**に `--schedule` が
+    落ちた場合は、動画が既に YouTube 上にあるので既出（`state/seen.json`）に
+    入れる。入れないと翌日また同じ題材を作って同じ動画をもう1本上げてしまう
+    （`upload_youtube.py` に重複防止が無い）。ログに
+    「アップロード自体は成功しています」と出たら、YouTube Studio で private の
+    まま残っていないか確認して手動で公開する
 
 - **`--dry-run` 実行時** — アップロードを一切行わないため、`state/seen.json`
   も更新しない（更新してしまうと、動作確認のつもりで手動 `--dry-run` した
@@ -123,6 +134,11 @@ python scripts/unpublish.py --all-today  # 当日分を全部戻す
 ```
 
 いずれも `privacyStatus` を `private` に戻すだけで、動画自体は消さない。
+
+`--all-today` は1本が失敗しても残りを必ず試し、最後に「N件中M件成功」を出す。
+失敗があれば終了コード1で、戻せなかった動画のURLを stderr に列挙する
+（**そのURLは公開されたままの可能性がある**ので、YouTube Studio で直接
+非公開にすること）。
 
 ## 前提の確認（チェックリスト）
 

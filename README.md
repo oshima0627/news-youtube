@@ -28,23 +28,63 @@ RSSで題材を拾ったら、公開前に必ず一次資料を引きに行き�
 「一次資料が取れなければ公開しない」を採用条件そのものにすることで、
 量産型ポリシーと完全自動での事実誤認リスクを、同じ1つの関門で塞いでいる。
 
+## ⚠ 画像だけは手動
+
+**`run_daily.py` は画像を自動取得しない。** 題材ごとに写る人物・場面が違い、
+ホワイトリスト（後述）の中から適切な1枚を選ぶ判断が自動化できていないため。
+
+前日までに、翌朝の候補になりそうな題材へ手で画像を当てておく:
+
+```bash
+python scripts/collect_news.py --limit 20        # 候補を work/candidates.json に作る
+python scripts/fetch_photo.py work/<id> <画像URL>  # photo.jpg と license.json を置く
+```
+
+画像が無いまま実行時刻を迎えた題材は「見送り（画像未準備）」として
+**その題材だけ**飛ばされる。用意していない日は0本になる。
+
 ## パイプライン
 
-毎朝1回 `run_daily.py` を起動するだけで、当日2本を作り切り、
+毎朝1回 `run_daily.py` を起動するだけで、当日の残り枠の数だけ作り、
 YouTube側の予約公開に載せて終了する。PC が日中落ちていても定刻に公開される。
 
 ```
+（前日までに手動）  fetch_photo.py    work/<id>/photo.jpg + license.json を用意
+
 06:00  run_daily.py
-  ├─ collect_news.py    RSS巡回 → 候補20件
-  ├─ verify_source.py   ★採用ゲート（根拠＋出典URLが揃った2件だけ通す）
-  └─ 採用分について
-       ├─ write_script.py   一次資料だけを渡して台本生成
-       ├─ fetch_photo.py    ホワイトリストから実写取得＋ライセンス記録
-       ├─ build_short.py    図解カード + VOICEVOX音声 → 1080x1920
-       └─ upload_youtube.py private → --schedule で 07:30 / 18:30 予約
+  ├─ collect_news.py            RSS巡回 → 候補20件（別プロセス。全滅なら中止）
+  └─ 候補を上から順に、枠が埋まるまで
+       ├─ evidence.collect()    ★採用ゲート（根拠＋出典URLが無ければ見送り）
+       ├─ 画像が無ければ見送り  （上記「画像だけは手動」）
+       ├─ script_writer.write() 一次資料だけを渡して台本生成
+       ├─ narrate.synthesize()  VOICEVOXで音声合成
+       ├─ build_short.build()   根拠カード + 音声 → 1080x1920
+       └─ upload_youtube.py     private → --schedule で 07:30 / 18:30 予約
 ```
 
+`run_daily.py` が別プロセス（`subprocess`）で起動するのは
+`collect_news.py` と `upload_youtube.py` の2つだけで、採用ゲートと台本生成は
+`evidence.collect()` / `script_writer.write()` を**直接 import** して呼ぶ
+（環境不備と題材固有の失敗を例外の型で見分けるため）。
+`verify_source.py` / `write_script.py` / `fetch_photo.py` は同じ処理を
+手で1件ずつ確認するための単体CLIとして残してある。
+
 公開後に問題が判明したら `scripts/unpublish.py <video_id>` で即座に戻す。
+
+## 根拠カード
+
+画面中央のカードには必ず一次資料の出典（会議名・日付・発言者）が印字される。
+したがってカードに出す文字列は一次資料に由来していなければならない。
+
+| 一次資料 | 画面に出るもの |
+| --- | --- |
+| 発言（`Evidence.figure` が空。現状はこれだけ） | 逐語引用そのものを引用カードに出す |
+| 数値（統計・公表。系統復活後） | その数値を数値カードに出す |
+
+発言系では、台本モデルが返した `quote_excerpt` が逐語引用の**部分文字列**である
+ことを `run_daily.py` が実際に確認し、外れていたらモデルの出力を捨てて逐語引用
+の先頭から機械的に抜き出した文字列へ差し替える。
+これがないと「モデルが作った文字列に一次資料の出典が付く」ことになる。
 
 ## 画像素材
 
@@ -64,7 +104,7 @@ YouTube側の予約公開に載せて終了する。PC が日中落ちていて�
 パイプライン実装済み。`scripts/run_daily.py` を毎朝06:00にタスク
 スケジューラから実行する運用を想定しているが、**タスクスケジューラへの
 登録自体はまだ行っていない**（オーナーが管理者権限で登録する）。
-画像の取得だけ手で当てる（`fetch_photo.py`）。
+**画像の準備は手動**（上記「⚠ 画像だけは手動」）。
 
 運用手順（初回認証・環境変数・画像の準備・事故ったときの戻し方・
 タスクスケジューラ登録コマンド）は [`docs/daily-workflow.md`](docs/daily-workflow.md) を参照。
