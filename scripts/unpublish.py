@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -27,6 +27,12 @@ PUBLISHED = ROOT / "state" / "published.json"
 
 from scripts.upload_youtube import die, get_service, set_privacy  # noqa: E402
 
+# publish_at は常に JST 運用（upload_youtube.py の --schedule も JST を渡す前提）。
+# 実行環境のローカル日付（date.today()）で判定すると、サーバーのタイムゾーンが
+# JST とズレたときに「静かに0件」になり事故を止められなくなる。かならず
+# publish_at を日時としてパースし、JST の暦日で当日かどうかを判定する。
+JST = timezone(timedelta(hours=9))
+
 
 def _today_ids() -> list[str]:
     if not PUBLISHED.exists():
@@ -36,9 +42,30 @@ def _today_ids() -> list[str]:
         data = json.loads(PUBLISHED.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as e:
         die(f"{PUBLISHED} が壊れています（JSONとして読めません）: {e}")
-    today = date.today().isoformat()
-    return [v["youtube_video_id"] for v in data.get("videos", {}).values()
-            if (v.get("publish_at") or "").startswith(today)]
+
+    today_jst = datetime.now(JST).date()
+    ids = []
+    for key, v in data.get("videos", {}).items():
+        publish_at = v.get("publish_at")
+        if not publish_at:
+            continue
+        try:
+            dt = datetime.fromisoformat(publish_at)
+        except ValueError:
+            # パース不能な値を黙って除外すると「対象がありません」に見えてしまい
+            # 事故を止められない。動画IDを添えて必ず警告する
+            vid = v.get("youtube_video_id") or key
+            print(f"! publish_at をパースできません（対象から除外します）: "
+                  f"{vid} publish_at={publish_at!r}")
+            continue
+        if dt.tzinfo is None:
+            # タイムゾーン無しの値はこのパイプラインでは常にJSTとして書かれる想定
+            dt = dt.replace(tzinfo=JST)
+        if dt.astimezone(JST).date() == today_jst:
+            vid = v.get("youtube_video_id")
+            if vid:
+                ids.append(vid)
+    return ids
 
 
 def main() -> None:

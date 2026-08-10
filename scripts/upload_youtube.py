@@ -171,6 +171,18 @@ def set_privacy(service, video_id: str, privacy: str, publish_at: str | None = N
                             body={"id": video_id, "status": status}).execute()
 
 
+def load_published() -> dict:
+    """state/published.json を読む。無言で落ちると事故調査ができないので、
+    不在・壊れているときは原因つきで止める（unpublish.py と同じ配慮）。"""
+    if not PUBLISHED.exists():
+        die(f"{PUBLISHED} がありません。先に python scripts/upload_youtube.py "
+            "work/<id> でアップロードしてください")
+    try:
+        return json.loads(PUBLISHED.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        die(f"{PUBLISHED} が壊れています（JSONとして読めません）: {e}")
+
+
 def record(meta: dict, video_id: str, privacy: str, ch: dict | None,
            publish_at: str | None = None) -> None:
     PUBLISHED.parent.mkdir(parents=True, exist_ok=True)
@@ -219,7 +231,7 @@ def main() -> None:
     print(f"- チャンネル: {ch['title']}（{ch['id']}）")
 
     if a.publish or a.schedule:
-        data = json.loads(PUBLISHED.read_text(encoding="utf-8-sig"))
+        data = load_published()
         entry = data["videos"].get(meta["id"]) or die(
             f"{meta['id']} はまだアップロードされていません")
         if a.schedule:
