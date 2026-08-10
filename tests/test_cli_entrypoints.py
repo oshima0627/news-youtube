@@ -25,6 +25,7 @@ CLI_ENTRYPOINTS = (
     "fetch_photo.py",
     "write_script.py",
     "narrate.py",
+    "build_short.py",
 )
 
 
