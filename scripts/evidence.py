@@ -42,3 +42,42 @@ def is_admissible(ev: Evidence) -> bool:
     has_quote = len(ev.quote.strip()) >= MIN_QUOTE_CHARS
     has_figure = bool(_FIGURE_RE.search(ev.figure))
     return has_quote or has_figure
+
+
+import requests
+
+KOKKAI_ENDPOINT = "https://kokkai.ndl.go.jp/api/speech"
+TIMEOUT = 20
+
+
+def parse_speeches(payload: dict) -> list[Evidence]:
+    """国会会議録APIの応答を Evidence に変換する。
+
+    「次に。」のような進行発言が大量に混ざるので、
+    根拠になる長さの無いものはここで落とす。
+    """
+    out: list[Evidence] = []
+    for rec in payload.get("speechRecord") or []:
+        quote = (rec.get("speech") or "").strip()
+        if len(quote) < MIN_QUOTE_CHARS:
+            continue
+        speaker = rec.get("speaker") or ""
+        context = (f"第{rec.get('session')}回国会 {rec.get('nameOfHouse')}"
+                   f"{rec.get('nameOfMeeting')} {rec.get('date')} {speaker}")
+        out.append(Evidence(kind="speech",
+                            source_url=rec.get("speechURL") or "",
+                            figure="",
+                            quote=quote,
+                            context=context.strip()))
+    return out
+
+
+def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
+    """国会会議録を全文検索する。認証キーは不要。"""
+    r = requests.get(KOKKAI_ENDPOINT, timeout=TIMEOUT, params={
+        "any": keyword,
+        "recordPacking": "json",
+        "maximumRecords": min(limit, 100),
+    })
+    r.raise_for_status()
+    return parse_speeches(r.json())

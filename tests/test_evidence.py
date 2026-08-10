@@ -58,3 +58,29 @@ def test_MIN_QUOTE_CHARS_の境界_11文字は不採用():
 def test_MIN_QUOTE_CHARS_の境界_12文字は採用():
     # MIN_QUOTE_CHARS = 12 なので、12文字は len(quote.strip()) >= MIN_QUOTE_CHARS で採用
     assert is_admissible(_ev(quote="123456789012", figure="")) is True
+
+
+import json
+from pathlib import Path
+
+from scripts.evidence import parse_speeches
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_発言をEvidenceに変換する():
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+    got = parse_speeches(payload)
+
+    assert len(got) == 1                       # 短すぎる進行発言は落ちる
+    ev = got[0]
+    assert ev.kind == "speech"
+    assert ev.quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+    assert ev.source_url.startswith("https://kokkai.ndl.go.jp/")
+    assert "予算委員会" in ev.context
+    assert "野田佳彦" in ev.context
+    assert is_admissible(ev) is True
+
+
+def test_発言が空のレスポンスは空リストになる():
+    assert parse_speeches({"numberOfRecords": 0}) == []
