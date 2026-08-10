@@ -1,5 +1,12 @@
 # 毎日の手順
 
+**このファイルのコマンドは、すべてリポジトリ直下で実行する。**
+`projects` のままだと `can't open file ... scripts\upload_youtube.py` になる。
+
+```powershell
+cd C:\Users\oshim\Documents\projects\news-youtube
+```
+
 ## 初回だけ（オーナーが行う）
 
 1. **YouTube認証**
