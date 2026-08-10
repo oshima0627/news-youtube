@@ -6,7 +6,7 @@
 **元からマークの無い出所からしか取得しない**。
 
   首相官邸        PDL1.0            出典明示＋加工した旨と加工主体の記載
-  各府省          政府標準利用規約2.0  出典明示
+  各府省          政府標準利用規約2.0  出典明示＋加工した旨と加工主体の記載
   Wikimedia       CC BY / CC BY-SA / PD  クレジット必須
 
 <https://www.kantei.go.jp/jp/terms.html>
@@ -24,6 +24,7 @@ ALLOWED_HOSTS = ("upload.wikimedia.org",)
 ALLOWED_SUFFIX = ".go.jp"
 TIMEOUT = 30
 EDITOR = "news-youtube"
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 def _host(url: str) -> str:
@@ -56,11 +57,45 @@ def attribution(url: str) -> str:
 
 
 def download(url: str, dest: Path) -> dict:
-    """画像を落として license.json 用の記録を返す。"""
+    """画像を落として license.json 用の記録を返す。
+
+    最終URLのホワイトリスト検証とサイズ・Content-Type チェックを行う。
+    リダイレクト迂回を防ぐため、requests の追従リダイレクト後の最終URL
+    に対しても is_allowed() で検証する。
+    """
     if not is_allowed(url):
         raise ValueError(f"取得を許可していない出所です: {url}")
-    r = requests.get(url, timeout=TIMEOUT)
+
+    # stream=True でレスポンスを受けながら、サイズ上限とContent-Type チェック
+    r = requests.get(url, timeout=TIMEOUT, stream=True)
     r.raise_for_status()
+
+    # リダイレクト後の最終URLも検証（リダイレクト迂回対策）
+    if r.url != url and not is_allowed(r.url):
+        raise ValueError(f"リダイレクト先が許可されていません: {r.url}")
+
+    # Content-Type 検証
+    content_type = r.headers.get("content-type", "").lower()
+    if not content_type.startswith("image/"):
+        raise ValueError(f"画像ではありません (Content-Type: {content_type})")
+
+    # サイズ上限チェック
+    content_length = r.headers.get("content-length")
+    if content_length:
+        size = int(content_length)
+        if size > MAX_IMAGE_SIZE:
+            raise ValueError(f"ファイルが大きすぎます: {size} > {MAX_IMAGE_SIZE}")
+
+    # ストリームで受けながらサイズをチェック
+    chunks = []
+    total_size = 0
+    for chunk in r.iter_content(chunk_size=8192):
+        if chunk:
+            chunks.append(chunk)
+            total_size += len(chunk)
+            if total_size > MAX_IMAGE_SIZE:
+                raise ValueError(f"ファイルが大きすぎます: {total_size} > {MAX_IMAGE_SIZE}")
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(r.content)
+    dest.write_bytes(b"".join(chunks))
     return {"url": url, "attribution": attribution(url), "file": dest.name}
