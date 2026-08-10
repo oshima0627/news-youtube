@@ -84,3 +84,111 @@ def test_発言をEvidenceに変換する():
 
 def test_発言が空のレスポンスは空リストになる():
     assert parse_speeches({"numberOfRecords": 0}) == []
+
+
+def test_フィールドが欠損していてもcontextが壊れない():
+    # session / nameOfHouse / nameOfMeeting / date が欠損した応答を想定
+    payload = {
+        "speechRecord": [
+            {
+                "speechID": "x",
+                "speaker": "野田佳彦",
+                "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+                "speechURL": "https://kokkai.ndl.go.jp/#/detail?x=1",
+            }
+        ]
+    }
+    got = parse_speeches(payload)
+
+    assert len(got) == 1
+    ev = got[0]
+    assert "None" not in ev.context
+    assert ev.context == "野田佳彦"          # 空要素は詰めて、余分な空白も残さない
+
+
+def test_speechRecordが単一オブジェクトでもリストとして扱う():
+    # 繰り返し要素が1件のとき、配列ではなくオブジェクト単体で返ってくる実装への対策
+    payload = {
+        "numberOfRecords": 1,
+        "speechRecord": {
+            "speechID": "121705261X00120251120_001",
+            "session": 217,
+            "nameOfHouse": "衆議院",
+            "nameOfMeeting": "予算委員会",
+            "date": "2025-11-20",
+            "speaker": "野田佳彦",
+            "speakerGroup": "立憲民主党",
+            "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+            "speechURL": "https://kokkai.ndl.go.jp/#/detail?minId=121705261X00120251120&spkNum=1",
+        },
+    }
+    got = parse_speeches(payload)
+
+    assert len(got) == 1
+    assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+    assert "予算委員会" in got[0].context
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_search_speechesが正しいパラメータでAPIを呼ぶ(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    captured = {}
+
+    def fake_get(url, timeout=None, params=None):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        captured["params"] = params
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    evidence_module.search_speeches("議員定数", limit=3)
+
+    assert captured["url"] == evidence_module.KOKKAI_ENDPOINT
+    assert captured["params"]["any"] == "議員定数"
+    assert captured["params"]["recordPacking"] == "json"
+    assert captured["params"]["maximumRecords"] == 3
+
+
+def test_search_speechesのlimitが100件に丸められる(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    captured = {}
+
+    def fake_get(url, timeout=None, params=None):
+        captured["params"] = params
+        return _FakeResponse({"speechRecord": []})
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    evidence_module.search_speeches("議員定数", limit=500)
+
+    assert captured["params"]["maximumRecords"] == 100
+
+
+def test_search_speechesがEvidenceのリストを返す(monkeypatch):
+    from scripts import evidence as evidence_module
+
+    payload = json.loads((FIXTURES / "kokkai_speech.json").read_text(encoding="utf-8"))
+
+    def fake_get(url, timeout=None, params=None):
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(evidence_module.requests, "get", fake_get)
+
+    got = evidence_module.search_speeches("議員定数", limit=3)
+
+    assert len(got) == 1
+    assert isinstance(got[0], Evidence)
+    assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
