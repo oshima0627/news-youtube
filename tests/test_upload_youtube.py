@@ -105,6 +105,37 @@ def test_expected_channel_idが空文字のときは終了する():
         uy.assert_expected_channel(service, meta)
 
 
+# --- 取り違えは専用の終了コードで返す（run_daily.py がこれで環境不備と判断する） ---
+
+def test_チャンネル不一致は専用の終了コード3で終了する():
+    # 汎用の1だと run_daily.py 側が ffmpeg 失敗や一時的なAPIエラーと区別できず、
+    # 全候補で同じ失敗を繰り返した末に終了コード0の「本日 0/2 本」になる
+    other = _FakeService(items=[_channel_item("UCwrong", "別のチャンネル")])
+    meta = {"id": "x", "title": "t", "expected_channel_id": EXPECTED_ID}
+
+    with pytest.raises(SystemExit) as exc_info:
+        uy.assert_expected_channel(other, meta)
+
+    assert exc_info.value.code == uy.EXIT_CHANNEL_MISMATCH == 3
+
+
+def test_expected_channel_idが無いときも終了コード3で終了する():
+    service = _FakeService(items=[_channel_item(EXPECTED_ID, EXPECTED_TITLE)])
+    with pytest.raises(SystemExit) as exc_info:
+        uy.assert_expected_channel(service, {"id": "x", "title": "t"})
+
+    assert exc_info.value.code == uy.EXIT_CHANNEL_MISMATCH
+
+
+def test_取り違え以外のdieは従来どおり終了コード1のまま():
+    # 取り違え専用コードを他の失敗にまで広げると、run_daily.py が
+    # 題材固有の失敗まで環境不備として中止してしまう
+    with pytest.raises(SystemExit) as exc_info:
+        uy.die("なんらかの失敗")
+
+    assert exc_info.value.code == 1
+
+
 def test_チャンネルIDが一致しないときは終了しメッセージに期待値と実際の値が入る(capsys):
     other_id = "UCwrongwrongwrongwrongwrong"
     other_title = "別のチャンネル"

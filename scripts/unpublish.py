@@ -18,6 +18,11 @@ from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    # 失敗の原因は stderr に出す。Windows 既定のロケール（cp932）のままだと
+    # 日本語の原因メッセージだけが文字化けし、「原因がログにそのまま出る」
+    # という各CLIの die()／中止メッセージの目的が損なわれる。
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -63,8 +68,15 @@ def _today_ids() -> list[str]:
             dt = dt.replace(tzinfo=JST)
         if dt.astimezone(JST).date() == today_jst:
             vid = v.get("youtube_video_id")
-            if vid:
-                ids.append(vid)
+            if not vid:
+                # 動画IDが無いエントリは戻しようがないが、黙って落とすと
+                # 「当日分は全部戻した」つもりで公開されたままの1本が残る。
+                # publish_at のパース失敗と同じく必ず警告する。
+                print(f"! youtube_video_id がありません（対象から除外します）。"
+                      f"YouTube Studio で直接確認してください: "
+                      f"{key} publish_at={publish_at}")
+                continue
+            ids.append(vid)
     return ids
 
 
@@ -80,9 +92,30 @@ def main() -> None:
         return
 
     service = get_service()
+    # これは完全自動公開に対する唯一の保険なので、1本目が失敗しても必ず
+    # 残りを試す。失敗でループを抜けると2本目以降が public のまま残り、
+    # 「戻したつもり」で事故が続く。set_privacy は動画が見つからないとき
+    # die()（SystemExit）を投げるので、Exception だけでなくそれも捕まえる。
+    failed: list[tuple[str, str]] = []
     for vid in ids:
-        set_privacy(service, vid, "private")
+        try:
+            set_privacy(service, vid, "private")
+        except (Exception, SystemExit) as e:      # noqa: BLE001
+            failed.append((vid, str(e) or type(e).__name__))
+            print(f"! 非公開に戻せませんでした（続行します）: "
+                  f"https://www.youtube.com/watch?v={vid} {e}", file=sys.stderr)
+            continue
         print(f"✓ 非公開に戻しました: https://www.youtube.com/watch?v={vid}")
+
+    ok = len(ids) - len(failed)
+    print(f"{len(ids)}件中{ok}件成功")
+    if failed:
+        print("✗ 以下は公開されたままの可能性があります。YouTube Studio で"
+              "直接非公開にしてください:", file=sys.stderr)
+        for vid, err in failed:
+            print(f"  https://www.youtube.com/watch?v={vid}  ({err})",
+                  file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

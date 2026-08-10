@@ -18,6 +18,11 @@ from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    # 失敗の原因は stderr に出す。Windows 既定のロケール（cp932）のままだと
+    # 日本語の原因メッセージだけが文字化けし、「原因がログにそのまま出る」
+    # という各CLIの die()／中止メッセージの目的が損なわれる。
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -44,9 +49,17 @@ SCOPES = [
 ]
 
 
-def die(msg: str) -> None:
+# チャンネル取り違えガードが発動したときだけ返す専用の終了コード。
+# 呼び出し側（run_daily.py）は、題材固有の失敗（ffmpeg・一時的なAPIエラー等）
+# と区別してこれを環境不備として扱い、日次実行そのものを中止する。
+# token.json が別チャンネルに紐づいている状態はどの題材でも同じ理由で必ず
+# 失敗するので、次の候補に進んでも全候補ぶん同じ失敗を繰り返すだけになる。
+EXIT_CHANNEL_MISMATCH = 3
+
+
+def die(msg: str, code: int = 1) -> None:
     print(f"✗ {msg}", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(code)
 
 
 def get_service():
@@ -99,13 +112,15 @@ def assert_expected_channel(service, meta: dict) -> dict | None:
     expected = meta.get("expected_channel_id")
     if not expected:
         die("meta.json に expected_channel_id がありません。"
-            "取り違えを防げないのでアップロードしません")
+            "取り違えを防げないのでアップロードしません",
+            code=EXIT_CHANNEL_MISMATCH)
     if ch is None or ch["id"] != expected:
         got = f"{ch['title']}（{ch['id']}）" if ch else "取得できず"
         die("アップロード先のチャンネルが指定と一致しません。\n"
             f"  期待: {expected}\n"
             f"  実際: {got}\n"
-            f"  {TOKEN.name} を削除し、同意画面で正しいチャンネルを選び直してください。")
+            f"  {TOKEN.name} を削除し、同意画面で正しいチャンネルを選び直してください。",
+            code=EXIT_CHANNEL_MISMATCH)
     return ch
 
 
