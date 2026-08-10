@@ -36,3 +36,25 @@ def test_引用が短すぎるものは根拠として認めない():
 
 def test_数値らしい文字を含まない図表値は認めない():
     assert is_admissible(_ev(quote="", figure="大幅に増加した")) is False
+
+
+def test_サブドメイン偽装を拒否する():
+    # kokkai.ndl.go.jp を偽った悪意あるサブドメイン（kokkai.ndl.go.jp.evil.com）は不採用
+    # endswith(".go.jp") は False になるため、ホスト検証が機能していることを確認
+    assert is_admissible(_ev(source_url="https://kokkai.ndl.go.jp.evil.com/x")) is False
+
+
+def test_パスに紛れ込ませた偽装を拒否する():
+    # ホスト部分は example.com だが、パスに kokkai.ndl.go.jp を含ませた悪意あるURL
+    # urlparse().hostname は example.com を返すため、.go.jp チェックで不採用になることを確認
+    assert is_admissible(_ev(source_url="https://example.com/kokkai.ndl.go.jp/x")) is False
+
+
+def test_MIN_QUOTE_CHARS_の境界_11文字は不採用():
+    # MIN_QUOTE_CHARS = 12 なので、11文字は len(quote.strip()) < MIN_QUOTE_CHARS で不採用
+    assert is_admissible(_ev(quote="12345678901", figure="")) is False
+
+
+def test_MIN_QUOTE_CHARS_の境界_12文字は採用():
+    # MIN_QUOTE_CHARS = 12 なので、12文字は len(quote.strip()) >= MIN_QUOTE_CHARS で採用
+    assert is_admissible(_ev(quote="123456789012", figure="")) is True
