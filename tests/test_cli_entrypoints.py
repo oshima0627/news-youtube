@@ -26,6 +26,8 @@ CLI_ENTRYPOINTS = (
     "write_script.py",
     "narrate.py",
     "build_short.py",
+    "upload_youtube.py",
+    "unpublish.py",
 )
 
 
