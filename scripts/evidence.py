@@ -13,8 +13,8 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-# 一次資料として認めるホスト。ここを広げると「解説」が「転載」に変わる
-EVIDENCE_HOSTS = ("kokkai.ndl.go.jp", "www.e-stat.go.jp", "e-stat.go.jp")
+# 一次資料として認めるホストのサフィックス。ここを広げると「解説」が「転載」に変わる
+# 許可範囲: 日本政府機関（*.go.jp）のオフィシャルサイト
 EVIDENCE_HOST_SUFFIX = ".go.jp"
 
 MIN_QUOTE_CHARS = 12
@@ -32,7 +32,7 @@ class Evidence:
 
 def _is_primary_host(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return host in EVIDENCE_HOSTS or host.endswith(EVIDENCE_HOST_SUFFIX)
+    return host.endswith(EVIDENCE_HOST_SUFFIX)
 
 
 def is_admissible(ev: Evidence) -> bool:
