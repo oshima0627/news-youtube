@@ -9,10 +9,11 @@ YouTube の量産型コンテンツ判定と、完全自動での事実誤認の
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
+
+import requests
 
 # 一次資料として認めるホストのサフィックス。ここを広げると「解説」が「転載」に変わる
 # 許可範囲: 日本政府機関（*.go.jp）のオフィシャルサイト
@@ -44,8 +45,6 @@ def is_admissible(ev: Evidence) -> bool:
     has_figure = bool(_FIGURE_RE.search(ev.figure))
     return has_quote or has_figure
 
-
-import requests
 
 KOKKAI_ENDPOINT = "https://kokkai.ndl.go.jp/api/speech"
 TIMEOUT = 20
@@ -97,54 +96,22 @@ def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
     return parse_speeches(r.json())
 
 
-ESTAT_ENDPOINT = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsList"
-
-
-def search_statistics(keyword: str) -> list[Evidence]:
-    """e-Stat の統計表を検索する。appId が無ければ何も返さない。
-
-    統計表そのものは数値の塊なので、ここでは「どの統計に当たれば数字が
-    あるか」までを Evidence にし、figure には統計表の件数を入れる。
-    """
-    app_id = os.environ.get("ESTAT_APP_ID")
-    if not app_id:
-        return []
-    r = requests.get(ESTAT_ENDPOINT, timeout=TIMEOUT, params={
-        "appId": app_id, "searchWord": keyword, "limit": 5,
-    })
-    r.raise_for_status()
-    body = r.json().get("GET_STATS_LIST", {})
-    if str(body.get("RESULT", {}).get("STATUS")) != "0":
-        return []
-    tables = body.get("DATALIST_INF", {}).get("TABLE_INF") or []
-    if isinstance(tables, dict):
-        tables = [tables]
-
-    out: list[Evidence] = []
-    for t in tables:
-        stats_id = t.get("@id") or ""
-        title = t.get("STATISTICS_NAME") or ""
-        survey = t.get("SURVEY_DATE") or ""
-        if not stats_id:
-            continue
-        out.append(Evidence(
-            kind="statistics",
-            source_url=f"https://www.e-stat.go.jp/dbview?sid={stats_id}",
-            figure=f"{survey}" if survey else stats_id,
-            quote="",
-            context=f"e-Stat {title}".strip()))
-    return out
-
-
 def collect(keyword: str) -> list[Evidence]:
-    """3系統に当てて、採用条件を満たした根拠だけを返す。
+    """一次資料の各系統に当てて、採用条件を満たした根拠だけを返す。
 
-    落ちている系統はスキップし、残りで判定を続ける。
-    全系統が失敗したら空を返す（＝その題材は作らない）。
+    現状は国会会議録（search_speeches）の1系統のみ。
+    e-Stat 系統は一旦外してある — search_statistics が figure に入れていたのは
+    統計表のメタデータ（調査年度・統計表ID）であって実際の統計値ではなく、
+    is_admissible の「figure に数字が1文字でもあれば通す」判定を statistics 系統
+    だけ骨抜きにしていたため（統計表IDにたまたま数字が入っているだけで採用ゲートを
+    通過してしまう）。getStatsData を叩いて実際の統計値を取れるようになったら、
+    このタプルに search_statistics を戻す。
+
+    系統ごとに例外を握りつぶす構造は、系統を後から追加・復活しやすくするために
+    あえて維持してある。1系統でも「その系統が落ちたら空になる」ことに変わりはない。
     """
     found: list[Evidence] = []
-    for fetch in (lambda: search_speeches(keyword),
-                  lambda: search_statistics(keyword)):
+    for fetch in (lambda: search_speeches(keyword),):
         try:
             found.extend(fetch())
         except Exception as e:            # noqa: BLE001 — 系統ごとに握りつぶす

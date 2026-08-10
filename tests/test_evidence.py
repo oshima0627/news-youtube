@@ -1,4 +1,4 @@
-from scripts.evidence import Evidence, is_admissible
+from scripts.evidence import Evidence, collect, is_admissible
 
 
 def _ev(**kw) -> Evidence:
@@ -194,28 +194,25 @@ def test_search_speechesがEvidenceのリストを返す(monkeypatch):
     assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
 
 
-from scripts.evidence import collect
-
-
-def test_collectは落ちた系統を飛ばして残りを返す(monkeypatch):
+def test_collectはsearch_speechesの結果をそのまま返す(monkeypatch):
+    # e-Stat 系統を外したことで collect() は search_speeches 単独になったが、
+    # 系統ごとに try/except で包む構造そのものは維持されている（後で系統を戻すため）。
+    # ここでは正常系として、その構造を壊さず結果が通ることを確認する。
     ok = Evidence(kind="speech", source_url="https://kokkai.ndl.go.jp/#/x",
                   figure="", quote="議員定数を四十五削減すると申し上げた",
                   context="予算委員会")
 
-    def boom(_keyword):
-        raise RuntimeError("e-Stat が落ちている")
-
     monkeypatch.setattr("scripts.evidence.search_speeches", lambda k, limit=10: [ok])
-    monkeypatch.setattr("scripts.evidence.search_statistics", boom)
 
     assert collect("議員定数") == [ok]
 
 
 def test_collectは全系統が落ちたら空になる(monkeypatch):
+    # 現状は search_speeches の1系統のみなので、それが落ちる＝全系統が落ちたことになる。
+    # 1系統でも「落ちたら空になる（例外を握りつぶして空を返す）」ことは検証できる。
     def boom(*a, **kw):
         raise RuntimeError("落ちている")
 
     monkeypatch.setattr("scripts.evidence.search_speeches", boom)
-    monkeypatch.setattr("scripts.evidence.search_statistics", boom)
 
     assert collect("議員定数") == []
