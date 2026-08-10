@@ -29,9 +29,21 @@ def pick_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
+def normalize_newlines(text: str) -> str:
+    """改行を空白に正規化する。
+
+    `textbbox` は `\n` を含む文字列を複数行として測定するため、そのまま
+    `fit_font()` / `wrap()` に渡すと「1つの論理行」として幅を測る想定と
+    ズレ、行間計算が崩れて帯からのはみ出しや行の重なりを招く。ナレーション
+    はClaudeが生成するため改行が混ざりうるので、両関数の入口で必ず正規化する。
+    """
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
 def fit_font(draw: ImageDraw.ImageDraw, text: str, max_w: int,
              start: int) -> ImageFont.FreeTypeFont:
     """幅に収まる最大サイズのフォントを返す。"""
+    text = normalize_newlines(text)
     size = start
     while size > 14:
         f = pick_font(size)
@@ -45,6 +57,7 @@ def fit_font(draw: ImageDraw.ImageDraw, text: str, max_w: int,
 def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
          max_w: int) -> list[str]:
     """日本語は単語境界が無いので、幅を見て1文字ずつ折り返す。"""
+    text = normalize_newlines(text)
     lines, cur = [], ""
     for ch in text:
         b = draw.textbbox((0, 0), cur + ch, font=font)
@@ -56,3 +69,25 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
     if cur:
         lines.append(cur)
     return lines
+
+
+def truncate_ellipsis(draw: ImageDraw.ImageDraw, text: str,
+                       font: ImageFont.FreeTypeFont, max_w: int) -> tuple[str, bool]:
+    """幅に収まるよう末尾を省略記号(…)で切り詰める。
+
+    `fit_font()` はフォントサイズを14までしか縮めないため、最小サイズでも
+    収まらない極端に長い文字列（一次資料の出典表記など）は、これで折り返し
+    せず1行のまま切り詰める。戻り値は (表示用文字列, 切り詰めたか) 。
+    """
+    b = draw.textbbox((0, 0), text, font=font)
+    if b[2] - b[0] <= max_w:
+        return text, False
+
+    cur = text
+    while cur:
+        cand = cur + "…"
+        b = draw.textbbox((0, 0), cand, font=font)
+        if b[2] - b[0] <= max_w:
+            return cand, True
+        cur = cur[:-1]
+    return "…", True
