@@ -192,3 +192,30 @@ def test_search_speechesがEvidenceのリストを返す(monkeypatch):
     assert len(got) == 1
     assert isinstance(got[0], Evidence)
     assert got[0].quote == "私どもは議員定数を四十五削減すると申し上げてまいりました。"
+
+
+from scripts.evidence import collect
+
+
+def test_collectは落ちた系統を飛ばして残りを返す(monkeypatch):
+    ok = Evidence(kind="speech", source_url="https://kokkai.ndl.go.jp/#/x",
+                  figure="", quote="議員定数を四十五削減すると申し上げた",
+                  context="予算委員会")
+
+    def boom(_keyword):
+        raise RuntimeError("e-Stat が落ちている")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches", lambda k, limit=10: [ok])
+    monkeypatch.setattr("scripts.evidence.search_statistics", boom)
+
+    assert collect("議員定数") == [ok]
+
+
+def test_collectは全系統が落ちたら空になる(monkeypatch):
+    def boom(*a, **kw):
+        raise RuntimeError("落ちている")
+
+    monkeypatch.setattr("scripts.evidence.search_speeches", boom)
+    monkeypatch.setattr("scripts.evidence.search_statistics", boom)
+
+    assert collect("議員定数") == []

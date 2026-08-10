@@ -9,6 +9,7 @@ YouTube の量産型コンテンツ判定と、完全自動での事実誤認の
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -94,3 +95,58 @@ def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
     })
     r.raise_for_status()
     return parse_speeches(r.json())
+
+
+ESTAT_ENDPOINT = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsList"
+
+
+def search_statistics(keyword: str) -> list[Evidence]:
+    """e-Stat の統計表を検索する。appId が無ければ何も返さない。
+
+    統計表そのものは数値の塊なので、ここでは「どの統計に当たれば数字が
+    あるか」までを Evidence にし、figure には統計表の件数を入れる。
+    """
+    app_id = os.environ.get("ESTAT_APP_ID")
+    if not app_id:
+        return []
+    r = requests.get(ESTAT_ENDPOINT, timeout=TIMEOUT, params={
+        "appId": app_id, "searchWord": keyword, "limit": 5,
+    })
+    r.raise_for_status()
+    body = r.json().get("GET_STATS_LIST", {})
+    if str(body.get("RESULT", {}).get("STATUS")) != "0":
+        return []
+    tables = body.get("DATALIST_INF", {}).get("TABLE_INF") or []
+    if isinstance(tables, dict):
+        tables = [tables]
+
+    out: list[Evidence] = []
+    for t in tables:
+        stats_id = t.get("@id") or ""
+        title = t.get("STATISTICS_NAME") or ""
+        survey = t.get("SURVEY_DATE") or ""
+        if not stats_id:
+            continue
+        out.append(Evidence(
+            kind="statistics",
+            source_url=f"https://www.e-stat.go.jp/dbview?sid={stats_id}",
+            figure=f"{survey}" if survey else stats_id,
+            quote="",
+            context=f"e-Stat {title}".strip()))
+    return out
+
+
+def collect(keyword: str) -> list[Evidence]:
+    """3系統に当てて、採用条件を満たした根拠だけを返す。
+
+    落ちている系統はスキップし、残りで判定を続ける。
+    全系統が失敗したら空を返す（＝その題材は作らない）。
+    """
+    found: list[Evidence] = []
+    for fetch in (lambda: search_speeches(keyword),
+                  lambda: search_statistics(keyword)):
+        try:
+            found.extend(fetch())
+        except Exception as e:            # noqa: BLE001 — 系統ごとに握りつぶす
+            print(f"! 一次資料の取得に失敗しました（この系統は飛ばします）: {e}")
+    return [ev for ev in found if is_admissible(ev)]
