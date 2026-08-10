@@ -1,0 +1,13 @@
+# 認証情報
+client_secret.json
+token.json
+.env
+
+# 中間生成物（再取得できるものは持たない）
+work/
+*.mp4
+*.wav
+
+__pycache__/
+*.pyc
+.venv/
