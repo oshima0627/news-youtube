@@ -57,18 +57,31 @@ def parse_speeches(payload: dict) -> list[Evidence]:
     根拠になる長さの無いものはここで落とす。
     """
     out: list[Evidence] = []
-    for rec in payload.get("speechRecord") or []:
+    records = payload.get("speechRecord") or []
+    if isinstance(records, dict):
+        # 繰り返し要素が1件のとき、配列ではなくオブジェクト単体で返ってくる実装があるためのガード
+        records = [records]
+    for rec in records:
         quote = (rec.get("speech") or "").strip()
         if len(quote) < MIN_QUOTE_CHARS:
             continue
+        session = rec.get("session")
+        house = rec.get("nameOfHouse") or ""
+        meeting = rec.get("nameOfMeeting") or ""
+        date = rec.get("date") or ""
         speaker = rec.get("speaker") or ""
-        context = (f"第{rec.get('session')}回国会 {rec.get('nameOfHouse')}"
-                   f"{rec.get('nameOfMeeting')} {rec.get('date')} {speaker}")
+        parts = [
+            f"第{session}回国会" if session else "",
+            f"{house}{meeting}",
+            date,
+            speaker,
+        ]
+        context = " ".join(p for p in parts if p)
         out.append(Evidence(kind="speech",
                             source_url=rec.get("speechURL") or "",
                             figure="",
                             quote=quote,
-                            context=context.strip()))
+                            context=context))
     return out
 
 
