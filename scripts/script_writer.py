@@ -8,11 +8,23 @@
 
 from __future__ import annotations
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AuthenticationError
 from pydantic import BaseModel, Field
 
 MODEL = "claude-opus-5"
 MAX_TOKENS = 16000
+
+# Anthropic SDK の認証解決チェーンは
+#   ANTHROPIC_API_KEY → ANTHROPIC_AUTH_TOKEN → `ant auth login` のプロファイル
+#   → Workload Identity Federation
+# の順。環境変数だけを事前チェックして弾くと、プロファイルで認証できる環境を
+# 誤って拒否してしまう。そのため事前チェックはせず、SDK自身の解決結果が
+# 「認証情報が無い」だったとき（messages.parse 実行時に TypeError で判明する）
+# を捕まえて、毎朝の無人実行でも原因が読み取れるメッセージに変換する。
+_AUTH_HINT = (
+    "Anthropic API の認証情報を解決できませんでした。"
+    "ANTHROPIC_API_KEY を設定するか、`ant auth login` でプロファイルを作成してください。"
+)
 
 SYSTEM = """あなたは日本の政治・外交ニュースを扱う解説チャンネルの構成作家です。
 与えられた一次資料（国会会議録の逐語引用、または政府統計）だけを根拠に、
@@ -58,27 +70,34 @@ def build_prompt(recipe: dict) -> str:
 
 
 def write(recipe: dict) -> Script:
-    # ANTHROPIC_API_KEY が無い/空だと Anthropic() の内部で分かりにくい例外になるため、
-    # 毎朝の自動実行で原因がすぐ読み取れるよう、ここで早期に落とす。
-    import os
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY が設定されていません。台本生成をスキップします。"
-            "（環境変数を設定してから再実行してください）"
+    try:
+        client = Anthropic()
+        response = client.messages.parse(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM,
+            thinking={"type": "adaptive"},
+            messages=[{"role": "user", "content": build_prompt(recipe)}],
+            output_format=Script,
         )
+    except AuthenticationError as e:
+        # 鍵/トークンは解決できたが無効・失効している場合（APIが401を返した場合）
+        raise RuntimeError(f"{_AUTH_HINT}（元のエラー: {e}）") from e
+    except TypeError as e:
+        # 認証情報が何も解決できなかった場合、SDK はリクエスト構築時にこの
+        # TypeError を出す（メッセージに "authentication" を含む）。それ以外の
+        # TypeError（実装側のバグ等）まで握りつぶさないよう、内容で見分ける。
+        if "authentication" not in str(e).lower():
+            raise
+        raise RuntimeError(f"{_AUTH_HINT}（元のエラー: {e}）") from e
 
-    client = Anthropic()
-    response = client.messages.parse(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM,
-        thinking={"type": "adaptive"},
-        messages=[{"role": "user", "content": build_prompt(recipe)}],
-        output_format=Script,
-    )
     if response.stop_reason == "refusal":
         raise RuntimeError(f"台本生成が拒否されました: {response.stop_details}")
     parsed = response.parsed_output
     if parsed is None:
-        raise RuntimeError("台本を構造化出力として受け取れませんでした")
+        raise RuntimeError(
+            "台本を構造化出力として受け取れませんでした"
+            f"（stop_reason={response.stop_reason}, "
+            f"usage={getattr(response, 'usage', None)}）"
+        )
     return parsed
