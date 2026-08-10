@@ -23,6 +23,7 @@ CLI_ENTRYPOINTS = (
     "collect_news.py",
     "verify_source.py",
     "fetch_photo.py",
+    "write_script.py",
 )
 
 

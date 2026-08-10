@@ -1,4 +1,5 @@
 anthropic
+pydantic
 pillow
 requests
 google-api-python-client
