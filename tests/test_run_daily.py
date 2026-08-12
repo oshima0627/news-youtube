@@ -968,3 +968,57 @@ def test_採れる題材が無い日は中止せず0本で終える(tmp_path, mo
     assert "採れる題材がありませんでした" in capsys.readouterr().out
     assert json.loads((state / "empty_streak.json").read_text(
         encoding="utf-8"))["days"] == 1
+
+
+def test_同じ出来事の見出しは1日に1本しか作らない(tmp_path, monkeypatch, capsys):
+    # 発言URLの重複除外だけでは足りない。実測では「消費税減税 基本方針決定」
+    # 「食料品消費税減税 政府が基本方針決定」「食料品の消費税減税 5日にも
+    # 閣議決定」が同時に並び、それぞれ**別の**発言（片山・大島・玉木・中野）が
+    # 取れてしまうため素通りした。朝と夕方で同じ出来事の動画が並ぶ。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    first = dict(_candidate("first", "消費税減税 基本方針決定"),
+                 keyword="消費 減税 基本")
+    second = dict(_candidate("second", "食料品の消費税減税 閣議決定へ"),
+                  keyword="食料 消費 減税")
+    _write_candidates([first, second], work)
+    _prepare_photo(work / first["id"])
+    _prepare_photo(work / second["id"])
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "同じ出来事を本日すでに使用" in out
+    assert "本日 1/2 本" in out
+
+
+def test_出来事が違えば2本作る(tmp_path, monkeypatch, capsys):
+    # 重複除外が効きすぎて1日1本しか作れなくなっていないことの確認。
+    # 実データから採った、検索語が1語だけ重なる別々の出来事
+    # （永住許可の年収要件と、知事会の共生社会提言）。1語の一致で
+    # 同じ出来事とみなすと、この日は片方しか作れなくなる。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    first = dict(_candidate("first", "外国人の永住許可 世帯年収を考慮"),
+                 keyword="外国 永住 許可")
+    second = dict(_candidate("second", "外国人との共生社会へ 全国知事会が提言"),
+                  keyword="外国 共生 社会")
+    _write_candidates([first, second], work)
+    _prepare_photo(work / first["id"])
+    _prepare_photo(work / second["id"])
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert "本日 2/2 本" in capsys.readouterr().out
