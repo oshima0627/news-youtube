@@ -37,6 +37,7 @@ WORK = ROOT / "work"
 RECIPES = ROOT / "recipes"
 CANDIDATES = WORK / "candidates.json"
 SEEN = ROOT / "state" / "seen.json"
+USED = ROOT / "state" / "used.json"
 STREAK = ROOT / "state" / "empty_streak.json"
 CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 
@@ -77,6 +78,36 @@ EVIDENCE_FAILURE_LIMIT = 3
 # 検索語がこの数だけ重なっていたら「同じ出来事」とみなす。検索語は
 # keywords.extract が返す2〜3語なので、2語一致はほぼ同じ題材を意味する。
 SAME_TOPIC_OVERLAP = 2
+
+# 重複判定をさかのぼる日数。seen.json は見出しのハッシュしか持たないので、
+# 同じ出来事が翌日に別の見出しで流れてくると素通りする。実際、初日に公開した
+# 「消費税減税」の題材が、翌日分でも**同じ発言（同じ出典URL）**を根拠に
+# もう1本作られた。日をまたいで覚えておく必要がある。
+USED_LOOKBACK_DAYS = 14
+
+
+def load_used(today) -> tuple[set[str], list[set[str]]]:
+    """直近に使った発言のURLと検索語を読む。(出典URL, 検索語の集合の並び)"""
+    if not USED.exists():
+        return set(), []
+    entries = json.loads(USED.read_text(encoding="utf-8"))
+    limit = (today - timedelta(days=USED_LOOKBACK_DAYS)).isoformat()
+    recent = [e for e in entries if e.get("date", "") >= limit]
+    return ({e["source_url"] for e in recent},
+            [set(e.get("keywords") or []) for e in recent])
+
+
+def save_used(today, source_url: str, keywords: set[str]) -> None:
+    """使った発言を記録する。古いものは落とす。"""
+    entries = (json.loads(USED.read_text(encoding="utf-8"))
+               if USED.exists() else [])
+    limit = (today - timedelta(days=USED_LOOKBACK_DAYS)).isoformat()
+    entries = [e for e in entries if e.get("date", "") >= limit]
+    entries.append({"date": today.isoformat(), "source_url": source_url,
+                    "keywords": sorted(keywords)})
+    USED.parent.mkdir(parents=True, exist_ok=True)
+    USED.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
 
 
 def _bump_empty_streak(made: int) -> None:
@@ -216,17 +247,19 @@ def main() -> None:
     aborted = False
     evidence_failures = 0        # 連続して EvidenceSourcesUnavailable になった数
     evidence_ok = False          # 一度でも一次資料の取得に成功したか
-    # 同じ日に同じ発言を根拠にした動画を2本作らないための記録。RSSには
-    # 同じ出来事の見出しが各社から並ぶ（「消費税減税 基本方針決定」と
-    # 「食料品の消費税減税 5日にも閣議決定」など）ため、素通しにすると
-    # 朝と夕方でほぼ同じ内容の動画が並び、まさに量産型と見なされる。
-    used_sources: set[str] = set()
-    # 発言が違っても題材が同じなら朝と夕方で似た動画になる。実測では
-    # 「消費税減税 基本方針決定」「食料品消費税減税 政府が基本方針決定」
-    # 「食料品の消費税減税 5日にも閣議決定」が同時に並び、別々の発言が
-    # 取れてしまうぶん発言URLの重複除外だけでは素通りした。検索語が
-    # 2語以上重なる題材は同じ出来事とみなす。
-    used_keywords: list[set[str]] = []
+    # 同じ発言を根拠にした動画を2本作らないための記録。RSSには同じ出来事の
+    # 見出しが各社から並ぶ（「消費税減税 基本方針決定」と「食料品の消費税減税
+    # 5日にも閣議決定」など）ため、素通しにすると朝と夕方でほぼ同じ内容の
+    # 動画が並び、まさに量産型と見なされる。
+    #
+    # **直近 USED_LOOKBACK_DAYS 日ぶんを読み込んでから始める。** 実行中だけの
+    # 記録にしていたため、初日に公開した題材が翌日分でも同じ発言を根拠に
+    # もう1本作られた（出典URLまで同一だった）。
+    today = datetime.now(JST).date()
+    used_sources, used_keywords = load_used(today)
+    if used_sources:
+        print(f"- 直近{USED_LOOKBACK_DAYS}日で使った発言 {len(used_sources)}件を"
+              "重複除外の対象にします")
 
     try:
         for cand in candidates:
@@ -249,7 +282,7 @@ def main() -> None:
             words = set(cand["keyword"].split())
             if any(len(words & used) >= SAME_TOPIC_OVERLAP
                    for used in used_keywords):
-                print(f"- 見送り（同じ出来事を本日すでに使用）: "
+                print(f"- 見送り（同じ出来事を最近すでに使用）: "
                       f"{cand['title'][:32]}")
                 continue
 
@@ -275,7 +308,7 @@ def main() -> None:
             # found は関連性の高い順。当日すでに使った発言は飛ばして次点を採る。
             ev = next((e for e in found if e.source_url not in used_sources), None)
             if ev is None:
-                print(f"- 見送り（同じ発言を本日すでに使用）: "
+                print(f"- 見送り（同じ発言を最近すでに使用）: "
                       f"{cand['title'][:32]}")
                 continue
 
@@ -437,6 +470,8 @@ def main() -> None:
                 seen.add(cand["id"])
             used_sources.add(ev.source_url)
             used_keywords.append(words)
+            if not a.dry_run:
+                save_used(today, ev.source_url, words)
             made += 1
             mark = "（要手動公開）" if stuck_private else ""
             print(f"✓ {made}/{len(slots)} {script.title[:40]}{mark}")

@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
 
+from scripts.telop import split_segments  # noqa: E402
+
 ENGINE = "http://127.0.0.1:50021"
 SPEAKER_NAME = "青山龍星"
 STYLE_NAME = "ノーマル"
@@ -137,6 +139,31 @@ def query_path(dest: Path) -> Path:
     return dest.with_name(dest.stem + "_query.json")
 
 
+def segments_path(dest: Path) -> Path:
+    """区切りごとのモーラ数の保存先（voice.wav → voice_segments.json）。"""
+    return dest.with_name(dest.stem + "_segments.json")
+
+
+def count_moras(text: str, sid: int) -> int:
+    """その文字列を読んだときのモーラ数。"""
+    r = requests.post(f"{ENGINE}/audio_query", timeout=TIMEOUT,
+                      params={"text": text, "speaker": sid})
+    r.raise_for_status()
+    return sum(len(p.get("moras") or []) for p in r.json().get("accent_phrases") or [])
+
+
+def measure_segments(text: str, sid: int) -> list[dict]:
+    """本文の区切りごとに (本文, モーラ数) を測る。
+
+    テロップを音に合わせるための対応づけに使う（scripts/telop.py）。
+    区切りの**数**ではなく**モーラ数**を鍵にするのは、VOICEVOX が句読点以外の
+    場所にも間を入れるため区切りの数が本文と食い違うから（実測3本中2本で
+    食い違った）。読み方の総量は切って数えても一括で数えても変わらない。
+    """
+    return [{"text": seg, "moras": count_moras(seg, sid)}
+            for seg in split_segments(text)]
+
+
 def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> float:
     """speed_scale で1回合成して dest に書き、実尺（秒）を返す。
 
@@ -187,6 +214,7 @@ def synthesize(text: str, dest: Path) -> Path:
         print(f"- 試行{attempt}: speedScale={speed:.3f} → 実尺{duration:.2f}秒"
               f"{'（許容範囲内）' if in_range else ''}")
         if in_range:
+            _write_segments(text, sid, dest)
             return dest
         if attempt == MAX_RETRIES + 1:
             break
@@ -200,7 +228,23 @@ def synthesize(text: str, dest: Path) -> Path:
           f"（実尺{duration:.2f}秒, speedScale={speed:.3f}）。"
           "この結果のまま採用します（収益化条件＝90日3本以上を優先し、"
           "1本落とすより尺が多少ずれる方を選ぶ）。要確認。")
+    _write_segments(text, sid, dest)
     return dest
+
+
+def _write_segments(text: str, sid: int, dest: Path) -> None:
+    """区切りごとのモーラ数を書き出す。失敗してもwavは捨てない。
+
+    ここで落ちても動画は作れる（テロップが静止字幕になるだけ）。
+    合成し直すほうが高くつくので、警告に留める。
+    """
+    try:
+        segments = measure_segments(text, sid)
+    except Exception as e:            # noqa: BLE001
+        print(f"! テロップ用の区切りを測れませんでした（静止字幕になります）: {e}")
+        return
+    segments_path(dest).write_text(
+        json.dumps(segments, ensure_ascii=False), encoding="utf-8")
 
 
 def main() -> None:

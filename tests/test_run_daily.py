@@ -155,6 +155,7 @@ def _setup_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(run_daily, "RECIPES", recipes)
     monkeypatch.setattr(run_daily, "CANDIDATES", work / "candidates.json")
     monkeypatch.setattr(run_daily, "SEEN", state / "seen.json")
+    monkeypatch.setattr(run_daily, "USED", state / "used.json")
     monkeypatch.setattr(run_daily, "STREAK", state / "empty_streak.json")
     return work, recipes, state
 
@@ -944,7 +945,7 @@ def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypa
 
 # --- 同じ日に同じ発言を根拠にした動画を2本作らない -------------------------
 
-def test_同じ発言を根拠にした動画は1日に1本しか作らない(tmp_path, monkeypatch, capsys):
+def test_同じ発言を根拠にした動画は続けて作らない(tmp_path, monkeypatch, capsys):
     # RSSには同じ出来事の見出しが各社から並ぶ（「消費税減税 基本方針決定」と
     # 「食料品の消費税減税 5日にも閣議決定」など）。素通しにすると朝と夕方で
     # ほぼ同じ内容の動画が並び、まさに量産型と見なされる。
@@ -967,7 +968,7 @@ def test_同じ発言を根拠にした動画は1日に1本しか作らない(tm
     run_daily.main()
 
     out = capsys.readouterr().out
-    assert "同じ発言を本日すでに使用" in out
+    assert "同じ発言を最近すでに使用" in out
     assert "本日 1/2 本" in out
 
 
@@ -1017,7 +1018,7 @@ def test_採れる題材が無い日は中止せず0本で終える(tmp_path, mo
         encoding="utf-8"))["days"] == 1
 
 
-def test_同じ出来事の見出しは1日に1本しか作らない(tmp_path, monkeypatch, capsys):
+def test_同じ出来事の見出しは続けて作らない(tmp_path, monkeypatch, capsys):
     # 発言URLの重複除外だけでは足りない。実測では「消費税減税 基本方針決定」
     # 「食料品消費税減税 政府が基本方針決定」「食料品の消費税減税 5日にも
     # 閣議決定」が同時に並び、それぞれ**別の**発言（片山・大島・玉木・中野）が
@@ -1041,7 +1042,7 @@ def test_同じ出来事の見出しは1日に1本しか作らない(tmp_path, m
     run_daily.main()
 
     out = capsys.readouterr().out
-    assert "同じ出来事を本日すでに使用" in out
+    assert "同じ出来事を最近すでに使用" in out
     assert "本日 1/2 本" in out
 
 
@@ -1069,3 +1070,98 @@ def test_出来事が違えば2本作る(tmp_path, monkeypatch, capsys):
     run_daily.main()
 
     assert "本日 2/2 本" in capsys.readouterr().out
+
+
+# --- 日をまたいだ重複防止 ---------------------------------------------------
+
+def test_昨日使った発言は今日もう一度使わない(tmp_path, monkeypatch, capsys):
+    # これが無くて実際に事故った。初日に公開した「消費税減税」の題材が、
+    # 翌日分でも**同じ発言（同じ出典URL）**を根拠にもう1本作られた。
+    # seen.json は見出しのハッシュしか持たないので、同じ出来事が翌日に
+    # 別の見出しで流れてくると素通りする。
+    from datetime import date, timedelta as td
+
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    yesterday = (date(2026, 8, 11)).isoformat()
+    (state / "used.json").write_text(json.dumps([
+        {"date": yesterday, "source_url": EVIDENCE.source_url,
+         "keywords": ["消費", "減税", "基本"]}
+    ], ensure_ascii=False), encoding="utf-8")
+
+    cand = _candidate("today", "消費税減税の別の見出し")
+    _write_candidates([cand], work)
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE])
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "同じ発言を最近すでに使用" in out
+    assert "本日 0/1 本" in out
+
+
+def test_使った発言を状態に書き出す(tmp_path, monkeypatch):
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cand = dict(_candidate("a", "消費税減税の基本方針"), keyword="消費 減税 基本")
+    _write_candidates([cand], work)
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    entries = json.loads((state / "used.json").read_text(encoding="utf-8"))
+    assert len(entries) == 1
+    assert entries[0]["source_url"].startswith("https://kokkai.ndl.go.jp/")
+    assert set(entries[0]["keywords"]) == {"消費", "減税", "基本"}
+
+
+def test_dry_runでは使った発言を記録しない(tmp_path, monkeypatch):
+    # 動作確認のつもりの --dry-run で記録すると、本番実行のときにその題材が
+    # 二度と拾われなくなる（seen.json を更新しないのと同じ理由）。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    _write_candidates([_candidate("a")], work)
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert not (state / "used.json").exists()
+
+
+def test_古い記録は重複判定から外れる(tmp_path, monkeypatch, capsys):
+    # 同じ論点が数か月後にまた争点になることはある。永久に禁止はしない。
+    from datetime import date, timedelta as td
+
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    old = (date(2026, 8, 11) - td(days=run_daily.USED_LOOKBACK_DAYS + 1)).isoformat()
+    (state / "used.json").write_text(json.dumps([
+        {"date": old, "source_url": EVIDENCE.source_url, "keywords": ["消費", "減税"]}
+    ], ensure_ascii=False), encoding="utf-8")
+
+    _write_candidates([_candidate("today")], work)
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE])
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert "本日 1/1 本" in capsys.readouterr().out

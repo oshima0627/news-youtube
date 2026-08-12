@@ -7,11 +7,18 @@
 音声認識も強制アライメントも要らない。実測で 58.6 秒の読み上げに対して
 計算とのずれは 44 ミリ秒だった。
 
-本文と音声の対応づけは句読点で行う。VOICEVOX は読点・句点のところで
-アクセント句に `pause_mora` を付けるので、**本文を句読点で切った数と
-`pause_mora` で切った数が一致する**（実測25対25）。この対応が崩れたときは
-テロップを諦めて静止字幕に戻す（`spans()` が None を返す）。動画が
-作れなくなるより、テロップが無い動画のほうがましなので。
+本文と音声の対応づけは**モーラ数**で行う。区切りごとに読み方を引いて
+モーラ数を数え、一括で合成したときのモーラ列を同じ数ずつ切り分ける。
+
+当初は「本文を句読点で切った数」と「`pause_mora` で切った数」が一致する
+前提で作ったが、**これは成り立たない**。VOICEVOX は句読点以外の場所にも
+間を入れるため、実測3本のうち2本で数が食い違い（23対26、28対30）、
+テロップがまったく付かなかった。一方モーラ数は3本とも完全に一致した
+（495/486/494）。読み方の総量は切って数えても一括で数えても変わらないので、
+こちらのほうが対応づけの鍵として頑健。
+
+それでも食い違ったときはテロップを諦めて静止字幕に戻す（`spans()` が
+None を返す）。動画が作れなくなるより、テロップが無い動画のほうがましなので。
 """
 
 from __future__ import annotations
@@ -47,26 +54,27 @@ def _phrase_duration(phrase: dict) -> float:
     return total
 
 
-def group_durations(query: dict) -> list[float]:
-    """`pause_mora` ごとに区切ったアクセント句のかたまりの長さを返す。
+def mora_timeline(query: dict) -> list[float]:
+    """モーラ1つずつの長さ（秒）を、読み上げ順に並べて返す。
 
-    speedScale で割って実時間にする。`prePhonemeLength` は先頭の無音なので
-    最初のかたまりに含め、`postPhonemeLength` は末尾に含める。
+    アクセント句の切れ目に入る間（`pause_mora`）は直前のモーラに足し込む。
+    間そのものは本文の文字に対応しないので、独立した要素にすると
+    モーラ数の突き合わせが合わなくなる。
+    `prePhonemeLength` / `postPhonemeLength` は前後の無音なので端に足す。
     """
     speed = query.get("speedScale") or 1.0
-    groups: list[float] = []
-    current = 0.0
+    out: list[float] = []
     for phrase in query.get("accent_phrases") or []:
-        current += _phrase_duration(phrase)
-        if phrase.get("pause_mora"):
-            groups.append(current / speed)
-            current = 0.0
-    if current:
-        groups.append(current / speed)
-    if groups:
-        groups[0] += (query.get("prePhonemeLength") or 0) / speed
-        groups[-1] += (query.get("postPhonemeLength") or 0) / speed
-    return groups
+        for mora in phrase.get("moras") or []:
+            out.append(((mora.get("consonant_length") or 0)
+                        + (mora.get("vowel_length") or 0)) / speed)
+        pause = phrase.get("pause_mora")
+        if pause and out:
+            out[-1] += (pause.get("vowel_length") or 0) / speed
+    if out:
+        out[0] += (query.get("prePhonemeLength") or 0) / speed
+        out[-1] += (query.get("postPhonemeLength") or 0) / speed
+    return out
 
 
 # 理想の位置から何文字まで離れた切れ目を許すか
@@ -130,22 +138,31 @@ def _chunk(segment: str, seconds: float) -> list[tuple[str, float]]:
     return [(p, seconds * len(p) / len(segment)) for p in pieces]
 
 
-def spans(text: str, query: dict) -> list[tuple[str, float, float]] | None:
+def spans(segments: list[dict],
+          query: dict) -> list[tuple[str, float, float]] | None:
     """(テロップ, 開始秒, 終了秒) の並びを返す。対応が取れなければ None。
 
-    None を返すのは、本文の句読点の数と VOICEVOX の区切りの数が食い違った
-    ときだけ。無理に割り当てると音とずれたテロップが出続けるので、
-    呼び出し側は静止字幕に戻す。
+    `segments` は `[{"text": 本文の区切り, "moras": モーラ数}, ...]`。
+    モーラ数の合計が一括合成のモーラ数と合わないときだけ None を返す。
+    無理に割り当てると音とずれたテロップが出続けるので、呼び出し側は
+    静止字幕に戻す。
     """
-    segments = split_segments(text)
-    durations = group_durations(query)
-    if not segments or len(segments) != len(durations):
-        print(f"! テロップの割り付けを見送ります（本文の区切り{len(segments)}個に対し"
-              f"音声の区切り{len(durations)}個）")
+    timeline = mora_timeline(query)
+    total_moras = sum(s["moras"] for s in segments)
+    if not segments or total_moras != len(timeline):
+        print(f"! テロップの割り付けを見送ります（本文のモーラ{total_moras}個に対し"
+              f"音声のモーラ{len(timeline)}個）")
         return None
 
+    durations: list[float] = []
+    at = 0
+    for segment in segments:
+        n = segment["moras"]
+        durations.append(sum(timeline[at:at + n]))
+        at += n
+
     merged: list[tuple[str, float]] = []
-    for segment, seconds in zip(segments, durations):
+    for segment, seconds in zip([s["text"] for s in segments], durations):
         if merged and len(merged[-1][0]) < MERGE_UNDER:
             prev_text, prev_seconds = merged.pop()
             segment, seconds = prev_text + segment, prev_seconds + seconds

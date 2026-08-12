@@ -26,6 +26,10 @@ def _query(phrases: list[dict], speed: float = 1.0,
             "prePhonemeLength": pre, "postPhonemeLength": post}
 
 
+def _segments(*pairs: tuple[str, int]) -> list[dict]:
+    return [{"text": t, "moras": n} for t, n in pairs]
+
+
 # --- 本文の切り分け ---------------------------------------------------------
 
 def test_句読点の直後で切る():
@@ -36,68 +40,93 @@ def test_句読点の直後で切る():
 
 # --- 音声側の区切り ---------------------------------------------------------
 
-def test_pause_moraごとに区切って実時間にする():
+def test_子音の長さもモーラの長さに含める():
+    # 「カ」のようなモーラは子音＋母音で1拍。母音だけ足すと全体が短く出て、
+    # テロップが音より先に進む。
+    q = _query([{"moras": [{"text": "カ", "consonant_length": 0.06,
+                            "vowel_length": 0.1}]}])
+
+    assert telop.mora_timeline(q) == pytest.approx([0.16])
+
+
+def test_モーラを1つずつ並べる():
     q = _query([_phrase(1.0), _phrase(0.5, pause=0.2), _phrase(2.0)])
 
-    assert telop.group_durations(q) == pytest.approx([1.7, 2.0])
+    # 間（pause_mora）は直前のモーラに足し込む。本文の文字に対応しないので
+    # 独立した要素にするとモーラ数の突き合わせが合わなくなる。
+    assert telop.mora_timeline(q) == pytest.approx([1.0, 0.7, 2.0])
 
 
 def test_speedScaleで割って実時間にする():
     # 尺補正で speedScale が 1.0 でない状態が普通。割らないと全部ずれる。
-    slow = telop.group_durations(_query([_phrase(2.0, pause=0.0)], speed=1.0))
-    fast = telop.group_durations(_query([_phrase(2.0, pause=0.0)], speed=2.0))
+    slow = telop.mora_timeline(_query([_phrase(2.0)], speed=1.0))
+    fast = telop.mora_timeline(_query([_phrase(2.0)], speed=2.0))
 
     assert slow == pytest.approx([2.0])
     assert fast == pytest.approx([1.0])
 
 
-def test_前後の無音を端のかたまりに含める():
-    q = _query([_phrase(1.0, pause=0.0), _phrase(1.0)], pre=0.1, post=0.2)
+def test_前後の無音を端のモーラに含める():
+    q = _query([_phrase(1.0), _phrase(1.0)], pre=0.1, post=0.2)
 
-    assert telop.group_durations(q) == pytest.approx([1.1, 1.2])
+    assert telop.mora_timeline(q) == pytest.approx([1.1, 1.2])
 
 
 # --- 割り付け ---------------------------------------------------------------
 
-def test_本文と音声を順に対応づける():
+def test_本文と音声をモーラ数で対応づける():
     # MERGE_UNDER 以上の長さにしておく（短い区切りは次とつながるため）
-    text = "これは最初の一文になります。これは次の一文になります。"
+    segs = _segments(("これは最初の一文になります。", 1), ("これは次の一文になります。", 1))
     q = _query([_phrase(2.0, pause=0.0), _phrase(3.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(segs, q)
 
     assert [t for t, _, _ in got] == ["これは最初の一文になります。", "これは次の一文になります。"]
     assert [(round(s, 3), round(e, 3)) for _, s, e in got] == [(0.0, 2.0), (2.0, 5.0)]
 
 
-def test_区切りの数が合わなければ割り付けない():
+def test_モーラ数が合わなければ割り付けない():
     # 無理に割り当てると音とずれたテロップが出続ける。呼び出し側が
     # 静止字幕に戻せるよう None を返す。
-    text = "一文目。二文目。三文目。"
-    q = _query([_phrase(1.0, pause=0.0), _phrase(1.0)])
+    segs = _segments(("一文目。", 3), ("二文目。", 3))
+    q = _query([_phrase(1.0), _phrase(1.0)])      # モーラは2個しかない
 
-    assert telop.spans(text, q) is None
+    assert telop.spans(segs, q) is None
+
+
+def test_区切りの数が音声とずれていても割り付けられる():
+    # VOICEVOX は句読点以外にも間を入れるので、区切りの数は一致しない。
+    # 実測3本中2本がこれで落ちてテロップがまったく付かなかった。
+    segs = _segments(("これは最初の一文になります。", 2), ("これは次の一文になります。", 2))
+    q = _query([_phrase(1.0, pause=0.5), _phrase(1.0, pause=0.5),
+                _phrase(2.0), _phrase(2.0)])      # 区切りは4個、本文は2個
+
+    got = telop.spans(segs, q)
+
+    assert got is not None
+    assert [t for t, _, _ in got] == ["これは最初の一文になります。", "これは次の一文になります。"]
+    assert got[0][2] == pytest.approx(3.0)
 
 
 def test_短い区切りは次とつなげる():
     # 「ポイントは、」だけが0.6秒出て消えるのは読めない。
-    text = "ポイントは、この制度がいつから始まるのかという点にあります。"
-    q = _query([_phrase(0.6, pause=0.0), _phrase(4.0)])
+    segs = _segments(("ポイントは、", 1), ("この制度がいつから始まるのかという点にあります。", 1))
+    q = _query([_phrase(0.6), _phrase(4.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(segs, q)
 
     assert got[0][0].startswith("ポイントは、この制度")
     assert got[0][1] == 0.0
 
 
 def test_長い区切りは分割して全部の文字を残す():
-    long_text = "これは非常に長い一文であり、" + "同じ内容が続きます。"
-    text = long_text
-    q = _query([_phrase(2.0, pause=0.0), _phrase(3.0)])
+    a, b = "これは非常に長い一文であり、", "同じ内容が続きます。"
+    segs = _segments((a, 1), (b, 1))
+    q = _query([_phrase(2.0), _phrase(3.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(segs, q)
 
-    assert "".join(t for t, _, _ in got) == text.replace("、", "、")
+    assert "".join(t for t, _, _ in got) == a + b
     assert all(len(t) <= telop.MAX_CHARS + 2 for t, _, _ in got)
 
 
@@ -106,7 +135,7 @@ def test_分割は語の途中で切らない():
     text = "片山さつき大臣がG7各国の食料品にかかる付加価値税について答弁しています。"
     q = _query([_phrase(5.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(_segments((text, 1)), q)
 
     assert len(got) == 2
     assert not got[1][0].startswith("る")
@@ -114,19 +143,19 @@ def test_分割は語の途中で切らない():
 
 
 def test_テロップの漢数字も算用数字にする():
-    text = "税率は一〇パーセントです。"
     q = _query([_phrase(2.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(_segments(("税率は一〇パーセントです。", 1)), q)
 
     assert got[0][0] == "税率は10パーセントです。"
 
 
 def test_時刻は途切れずつながる():
-    text = "これは最初の一文です。これは二番目の一文です。これは三番目の一文です。"
-    q = _query([_phrase(1.0, pause=0.0), _phrase(2.0, pause=0.0), _phrase(3.0)])
+    segs = _segments(("これは最初の一文です。", 1), ("これは二番目の一文です。", 1),
+                     ("これは三番目の一文です。", 1))
+    q = _query([_phrase(1.0), _phrase(2.0), _phrase(3.0)])
 
-    got = telop.spans(text, q)
+    got = telop.spans(segs, q)
 
     for previous, following in zip(got, got[1:]):
         assert previous[2] == pytest.approx(following[1])
@@ -146,4 +175,4 @@ def test_合計をwavの実尺にそろえる():
 
 def test_空でも壊れない():
     assert telop.stretch([], 5.0) == []
-    assert telop.spans("", _query([])) is None
+    assert telop.spans([], _query([])) is None

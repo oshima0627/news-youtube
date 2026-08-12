@@ -34,7 +34,7 @@ from scripts.cards import (CARD_TOP, PHOTO_H, PHOTO_TOP, SHORT_SIZE,  # noqa: E4
                            TELOP_TOP, render_figure, render_headline,
                            render_quote, render_telop)
 from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
-                             wav_duration_seconds)
+                             segments_path, wav_duration_seconds)
 from scripts.telop import spans as telop_spans  # noqa: E402
 from scripts.telop import stretch  # noqa: E402
 
@@ -130,13 +130,15 @@ def plan_frames(workdir: Path, script: dict,
     1枚だけ出す。テロップが無い動画のほうが、作れない動画よりましなので。
     """
     query_file = query_path(workdir / "voice.wav")
-    if query_file.exists():
-        query = json.loads(query_file.read_text(encoding="utf-8"))
-        items = telop_spans(script["narration"], query)
+    segments_file = segments_path(workdir / "voice.wav")
+    if query_file.exists() and segments_file.exists():
+        items = telop_spans(
+            json.loads(segments_file.read_text(encoding="utf-8")),
+            json.loads(query_file.read_text(encoding="utf-8")))
         if items:
             return stretch(items, voice_duration)
     else:
-        print("! voice_query.json が無いためテロップを付けません"
+        print("! 音声の測定結果が無いためテロップを付けません"
               "（narrate.py で音声を作り直すと付きます）")
     return [(script["subtitle"], 0.0, voice_duration)]
 
