@@ -29,6 +29,13 @@ OUT = ROOT / "work" / "candidates.json"
 
 from scripts.sources import FEEDS, parse_feed, rank  # noqa: E402
 
+# フィードは取れたが、採れる題材が1件も無かったときの終了コード。
+# rank() が国会で議論されえない題材（天気・スポーツ）を落とすようになった
+# ため、候補0件は「ネットワーク不通」だけでなく「今日はその手の
+# ニュースしか無かった」でも起こる。後者は環境不備ではないので、
+# run_daily.py 側が中止（exit 1）と静かな0本を区別できるように分ける。
+EXIT_NO_TOPIC = 2
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -66,11 +73,11 @@ def main() -> None:
     OUT.write_text(json.dumps(picked, ensure_ascii=False, indent=2) + "\n",
                    encoding="utf-8")
     if not picked:
-        print(f"✗ 候補が1件もありません（取得した記事 {len(items)} 件、"
-              f"失敗したフィード {len(failures)}/{len(FEEDS)}）。"
-              "RSSの内容か state/seen.json による除外を確認してください",
-              file=sys.stderr)
-        sys.exit(1)
+        print(f"! 採れる題材が1件もありませんでした（取得した記事 "
+              f"{len(items)} 件、失敗したフィード {len(failures)}/{len(FEEDS)}）。"
+              "国会で議論されえない題材（天気・スポーツ等）と既出"
+              "（state/seen.json）を除いた結果です", file=sys.stderr)
+        sys.exit(EXIT_NO_TOPIC)
     print(f"✓ 候補 {len(picked)} 件 → {OUT.name}")
     for p in picked[:5]:
         print(f"  {p['score']:+3d} {p['title'][:40]}")

@@ -72,9 +72,12 @@ def test_一部のフィードが生きていれば従来どおり続行する(t
     assert len(picked) == 1
 
 
-def test_候補が0件なら非0終了する(tmp_path, monkeypatch, capsys):
-    # 取得自体は全部成功しているが、中身が空（または seen で全部除外された）
-    # ケース。空の candidates.json を exit 0 で書くと原因に気づけない。
+def test_候補が0件なら題材なしの終了コードで終わる(tmp_path, monkeypatch, capsys):
+    # 取得自体は全部成功しているが、中身が空（または seen や題材の門番で
+    # 全部除外された）ケース。空の candidates.json を exit 0 で書くと
+    # run_daily.py 側が原因に気づけないので非0で返すが、環境不備（exit 1）
+    # とは区別する。rank() が天気・スポーツを落とすようになったため、
+    # 候補0件は「今日はその手のニュースしか無かった」でも普通に起こる。
     _setup(tmp_path, monkeypatch)
     empty = """<?xml version="1.0"?><rss><channel></channel></rss>"""
 
@@ -84,5 +87,6 @@ def test_候補が0件なら非0終了する(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc_info:
         collect_news.main()
 
-    assert exc_info.value.code == 1
-    assert "候補が1件もありません" in capsys.readouterr().err
+    assert exc_info.value.code == collect_news.EXIT_NO_TOPIC
+    assert exc_info.value.code != 1
+    assert "採れる題材が1件もありません" in capsys.readouterr().err

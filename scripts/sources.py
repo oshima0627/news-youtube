@@ -11,8 +11,9 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import xml.etree.ElementTree as ET
+
+from scripts.keywords import MIN_KEYWORDS, extract, is_policy_topic
 
 FEEDS = (
     "https://www3.nhk.or.jp/rss/news/cat0.xml",   # 主要
@@ -42,12 +43,6 @@ def make_id(title: str) -> str:
     return hashlib.sha1(title.encode("utf-8")).hexdigest()[:12]
 
 
-def _keyword(title: str) -> str:
-    """一次資料を引くための検索語。記号と定型の飾りを落とす。"""
-    t = re.sub(r"[【】\[\]（）()「」『』｜|…、。！？!?]", " ", title)
-    return " ".join(t.split())[:40]
-
-
 def parse_feed(xml: str) -> list[dict]:
     root = ET.fromstring(xml)
     out: list[dict] = []
@@ -60,19 +55,30 @@ def parse_feed(xml: str) -> list[dict]:
 
 
 def rank(items: list[dict], seen: set[str]) -> list[dict]:
-    """既出を除き、得点の高い順に並べる。"""
+    """既出と対象外の題材を除き、得点の高い順に並べる。
+
+    国会で議論されえない題材（天気・スポーツ・芸能）はここで落とす。
+    残しても一次資料には当たらないか、当たっても無関係な答弁しか返って
+    こない（keywords.py 参照）。検索語が足りない見出しも同じ理由で落とす。
+    """
     out: list[dict] = []
     for it in items:
-        nid = make_id(it["title"])
+        title = it["title"]
+        nid = make_id(title)
         if nid in seen:
             continue
         seen.add(nid)               # 同一実行内の重複も落とす
+        if not is_policy_topic(title):
+            continue
+        words = extract(title)
+        if len(words) < MIN_KEYWORDS:
+            continue
         out.append({
             "id": nid,
-            "title": it["title"],
+            "title": title,
             "link": it["link"],
-            "keyword": _keyword(it["title"]),
+            "keyword": " ".join(words),
             "category": "政治",
-            "score": score(it["title"]),
+            "score": score(title),
         })
     return sorted(out, key=lambda x: x["score"], reverse=True)

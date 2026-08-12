@@ -45,6 +45,7 @@ CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 JST = timezone(timedelta(hours=9))
 
 from scripts.build_short import build  # noqa: E402
+from scripts.collect_news import EXIT_NO_TOPIC  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     EvidenceSourcesUnavailable,
     build_recipe,
@@ -66,6 +67,10 @@ from scripts.upload_youtube import EXIT_CHANNEL_MISMATCH  # noqa: E402
 # すると、5xx が1回混ざっただけでその日が0本になる。逆に全候補ぶん見送りを
 # 続けると環境不備に気づけない。連続で N 件失敗したときだけ中止に格上げする。
 EVIDENCE_FAILURE_LIMIT = 3
+
+# 検索語がこの数だけ重なっていたら「同じ出来事」とみなす。検索語は
+# keywords.extract が返す2〜3語なので、2語一致はほぼ同じ題材を意味する。
+SAME_TOPIC_OVERLAP = 2
 
 
 def _bump_empty_streak(made: int) -> None:
@@ -159,6 +164,13 @@ def main() -> None:
         subprocess.run([sys.executable, "scripts/collect_news.py",
                         "--limit", "20"], check=True, cwd=ROOT)
     except subprocess.CalledProcessError as e:
+        # EXIT_NO_TOPIC は「フィードは取れたが、国会で議論されえない題材
+        # （天気・スポーツ）と既出を除いたら何も残らなかった」。環境は
+        # 正常なので中止せず、0本の日として静かに終える。
+        if e.returncode == EXIT_NO_TOPIC:
+            print("本日 0/{} 本（採れる題材がありませんでした）".format(len(slots)))
+            _bump_empty_streak(0)
+            return
         print(f"✗ 候補の収集に失敗しました。RSSの取得元に接続できないなど"
               f"環境不備の可能性が高いため日次実行を中止します"
               f"（終了コード {e.returncode}）", file=sys.stderr)
@@ -179,6 +191,17 @@ def main() -> None:
     aborted = False
     evidence_failures = 0        # 連続して EvidenceSourcesUnavailable になった数
     evidence_ok = False          # 一度でも一次資料の取得に成功したか
+    # 同じ日に同じ発言を根拠にした動画を2本作らないための記録。RSSには
+    # 同じ出来事の見出しが各社から並ぶ（「消費税減税 基本方針決定」と
+    # 「食料品の消費税減税 5日にも閣議決定」など）ため、素通しにすると
+    # 朝と夕方でほぼ同じ内容の動画が並び、まさに量産型と見なされる。
+    used_sources: set[str] = set()
+    # 発言が違っても題材が同じなら朝と夕方で似た動画になる。実測では
+    # 「消費税減税 基本方針決定」「食料品消費税減税 政府が基本方針決定」
+    # 「食料品の消費税減税 5日にも閣議決定」が同時に並び、別々の発言が
+    # 取れてしまうぶん発言URLの重複除外だけでは素通りした。検索語が
+    # 2語以上重なる題材は同じ出来事とみなす。
+    used_keywords: list[set[str]] = []
 
     try:
         for cand in candidates:
@@ -198,6 +221,13 @@ def main() -> None:
             # 5xx が1回混ざっただけでその日が0本＋exit 1 になってしまう
             # （search_speeches 側でもリトライしている）。連続 N 件失敗した
             # ときだけ「本当に落ちている」と判断して中止に格上げする。
+            words = set(cand["keyword"].split())
+            if any(len(words & used) >= SAME_TOPIC_OVERLAP
+                   for used in used_keywords):
+                print(f"- 見送り（同じ出来事を本日すでに使用）: "
+                      f"{cand['title'][:32]}")
+                continue
+
             try:
                 found = collect(cand["keyword"])
             except EvidenceSourcesUnavailable as e:
@@ -216,7 +246,13 @@ def main() -> None:
             if not found:
                 print(f"- 見送り（根拠なし）: {cand['title'][:32]}")
                 continue
-            ev = found[0]
+
+            # found は関連性の高い順。当日すでに使った発言は飛ばして次点を採る。
+            ev = next((e for e in found if e.source_url not in used_sources), None)
+            if ev is None:
+                print(f"- 見送り（同じ発言を本日すでに使用）: "
+                      f"{cand['title'][:32]}")
+                continue
 
             workdir = WORK / cand["id"]
 
@@ -373,6 +409,8 @@ def main() -> None:
             # 手動公開待ちになる」ほうが実害が小さいので、既出に入れる方を選ぶ。
             if not a.dry_run:
                 seen.add(cand["id"])
+            used_sources.add(ev.source_url)
+            used_keywords.append(words)
             made += 1
             mark = "（要手動公開）" if stuck_private else ""
             print(f"✓ {made}/{len(slots)} {script.title[:40]}{mark}")
