@@ -137,7 +137,7 @@ def test_写真は上寄りで切り取る():
     from scripts.build_short import _fill
 
     src = Image.new("RGB", (100, 1000), (0, 0, 255))      # 下は青
-    src.paste(Image.new("RGB", (100, 300), (255, 0, 0)), (0, 0))   # 上30%は赤
+    src.paste(Image.new("RGB", (100, 400), (255, 0, 0)), (0, 0))   # 上40%は赤
 
     got = _fill(src, (100, 100))
 
@@ -151,7 +151,7 @@ def test_写真の切り取り位置は指定できる():
     from scripts.build_short import _fill
 
     src = Image.new("RGB", (100, 1000), (0, 0, 255))
-    src.paste(Image.new("RGB", (100, 300), (255, 0, 0)), (0, 0))
+    src.paste(Image.new("RGB", (100, 400), (255, 0, 0)), (0, 0))
 
     assert _fill(src, (100, 100), anchor_y=0.5).getpixel((50, 50)) == (0, 0, 255)
     assert _fill(src, (100, 100), anchor_y=0.0).getpixel((50, 50)) == (255, 0, 0)
