@@ -68,6 +68,10 @@ from scripts.upload_youtube import EXIT_CHANNEL_MISMATCH  # noqa: E402
 # 続けると環境不備に気づけない。連続で N 件失敗したときだけ中止に格上げする。
 EVIDENCE_FAILURE_LIMIT = 3
 
+# 検索語がこの数だけ重なっていたら「同じ出来事」とみなす。検索語は
+# keywords.extract が返す2〜3語なので、2語一致はほぼ同じ題材を意味する。
+SAME_TOPIC_OVERLAP = 2
+
 
 def _bump_empty_streak(made: int) -> None:
     """0本の日が続いたら警告する。収益化要件は90日で3本以上。"""
@@ -192,6 +196,12 @@ def main() -> None:
     # 「食料品の消費税減税 5日にも閣議決定」など）ため、素通しにすると
     # 朝と夕方でほぼ同じ内容の動画が並び、まさに量産型と見なされる。
     used_sources: set[str] = set()
+    # 発言が違っても題材が同じなら朝と夕方で似た動画になる。実測では
+    # 「消費税減税 基本方針決定」「食料品消費税減税 政府が基本方針決定」
+    # 「食料品の消費税減税 5日にも閣議決定」が同時に並び、別々の発言が
+    # 取れてしまうぶん発言URLの重複除外だけでは素通りした。検索語が
+    # 2語以上重なる題材は同じ出来事とみなす。
+    used_keywords: list[set[str]] = []
 
     try:
         for cand in candidates:
@@ -211,6 +221,13 @@ def main() -> None:
             # 5xx が1回混ざっただけでその日が0本＋exit 1 になってしまう
             # （search_speeches 側でもリトライしている）。連続 N 件失敗した
             # ときだけ「本当に落ちている」と判断して中止に格上げする。
+            words = set(cand["keyword"].split())
+            if any(len(words & used) >= SAME_TOPIC_OVERLAP
+                   for used in used_keywords):
+                print(f"- 見送り（同じ出来事を本日すでに使用）: "
+                      f"{cand['title'][:32]}")
+                continue
+
             try:
                 found = collect(cand["keyword"])
             except EvidenceSourcesUnavailable as e:
@@ -393,6 +410,7 @@ def main() -> None:
             if not a.dry_run:
                 seen.add(cand["id"])
             used_sources.add(ev.source_url)
+            used_keywords.append(words)
             made += 1
             mark = "（要手動公開）" if stuck_private else ""
             print(f"✓ {made}/{len(slots)} {script.title[:40]}{mark}")
