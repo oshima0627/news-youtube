@@ -62,7 +62,7 @@ run_daily.py
        ├─ commons.resolve()   発言者の顔写真を自動取得（下記「画像」参照）
        ├─ script_writer.write()   一次資料だけを渡して台本生成
        ├─ narrate.synthesize()    VOICEVOXで音声合成
-       ├─ build_short.build()     図解カード + 音声 → 1080x1920
+       ├─ build_short.build()     図解カード + テロップ + 音声 → 1080x1920
        └─ upload_youtube.py       private → --schedule で 07:30 / 18:30 予約
 ```
 

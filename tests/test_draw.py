@@ -115,3 +115,37 @@ def test_値が0になる単位は出力しない():
     # 「一兆万」のような壊れた並びでも「1兆0万」を作らない。regex は
     # 漢数字の連なりを機械的に拾うので、意味を成さない並びも入ってくる。
     assert normalize_numerals("一兆万") == "1兆"
+
+
+def test_句点は行頭に落とさない():
+    # 禁則処理。テロップで「魚は10パーセントだと説明しました」の次の行が
+    # 「。」1文字だけになるのが実際に起きた。
+    from PIL import Image, ImageDraw
+
+    from scripts.draw import pick_font, wrap
+
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    font = pick_font(58)
+    body = "あいうえお"
+    # ちょうど本文だけが収まり、次の「。」が溢れる幅にする
+    box = d.textbbox((0, 0), body, font=font)
+    width = box[2] - box[0]
+
+    got = wrap(d, body + "。", font, width)
+
+    assert got == ["あいうえお。"], got
+
+
+def test_閉じ括弧も行頭に落とさない():
+    from PIL import Image, ImageDraw
+
+    from scripts.draw import pick_font, wrap
+
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    font = pick_font(58)
+    body = "「あいうえお"
+    box = d.textbbox((0, 0), body, font=font)
+
+    got = wrap(d, body + "」", font, box[2] - box[0])
+
+    assert got == ["「あいうえお」"], got
