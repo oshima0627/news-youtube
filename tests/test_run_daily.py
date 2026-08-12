@@ -81,6 +81,15 @@ def _candidate(cid: str, title: str = "題材タイトル") -> dict:
             "link": f"https://example.go.jp/{cid}"}
 
 
+def _fake_ensure_photo(ev, dest: Path) -> dict:
+    """run_daily.ensure_photo の差し替え。画像を1枚置いた体にする。"""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"fake-jpeg-bytes")
+    return {"url": "https://upload.wikimedia.org/x.jpg",
+            "attribution": "画像: テスト / CC BY 4.0（https://example.org/x）",
+            "file": dest.name}
+
+
 def _prepare_photo(workdir: Path) -> None:
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "photo.jpg").write_bytes(b"fake-jpeg-bytes")
@@ -165,6 +174,10 @@ def _mock_success_path(monkeypatch, fail_for: set[str] | None = None) -> FakeRun
     monkeypatch.setattr(run_daily, "collect",
                         lambda keyword: [_evidence_for(keyword)])
     monkeypatch.setattr(run_daily, "write", lambda recipe: _script())
+    # 画像取得は外部API（ja.wikipedia / Commons）を叩くので必ず差し替える。
+    # 差し替え忘れると、テストが実ネットワークに出て遅くなるうえ、
+    # 相手側の状態でテスト結果が変わる。
+    monkeypatch.setattr(run_daily, "ensure_photo", _fake_ensure_photo)
     monkeypatch.setattr(run_daily, "synthesize", lambda text, dest: dest)
     monkeypatch.setattr(run_daily, "build", lambda workdir: workdir / "video.mp4")
     return fake_run
@@ -587,17 +600,16 @@ def test_環境不備で中止してもそこまでの成功分はseenに残る(
     assert seen == ["ok"]
 
 
-def test_画像未準備の題材はその場で分かるメッセージで飛ばす(tmp_path, monkeypatch, capsys):
+def test_画像を取得できない題材だけ飛ばす(tmp_path, monkeypatch, capsys):
+    # 画像は発言者から自動で取る。取れないときだけ、その題材を飛ばす。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
     monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
-    no_photo = _candidate("no_photo")
-    ok = _candidate("ok")
+    no_photo = _candidate("no_photo", "画像が取れない題材")
+    ok = _candidate("ok", "画像が取れる題材")
     _write_candidates([no_photo, ok], work)
-    # no_photo には画像を用意しない
-    _prepare_photo(work / ok["id"])
 
     write_calls: list[str] = []
 
@@ -605,20 +617,47 @@ def test_画像未準備の題材はその場で分かるメッセージで飛�
         write_calls.append(recipe["id"])
         return _script()
 
-    fake_run = _mock_success_path(monkeypatch)
+    def fake_ensure_photo(ev, dest):
+        if "no_photo" in str(dest):
+            raise RuntimeError("使える画像が見つかりませんでした")
+        return _fake_ensure_photo(ev, dest)
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "ensure_photo", fake_ensure_photo)
     monkeypatch.setattr(run_daily, "write", fake_write)
     monkeypatch.setattr("sys.argv", ["run_daily.py"])
 
     run_daily.main()
 
     out = capsys.readouterr().out
-    assert "画像未準備" in out
+    assert "画像を取得できません" in out
     assert "no_photo" in out
-    assert "fetch_photo.py" in out
-    # 画像が無い題材では write() を呼んでいない（無駄なAPI課金をしない）
+    # 画像が取れない題材では write() を呼んでいない（無駄なAPI課金をしない）
     assert write_calls == ["ok"]
     seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
     assert seen == ["ok"]
+
+
+def test_手で用意した画像があれば自動取得で上書きしない(tmp_path, monkeypatch, capsys):
+    # fetch_photo.py で差し替えた1枚を、次の実行が黙って上書きしてはいけない。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cand = _candidate("manual")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    def boom(ev, dest):
+        raise AssertionError("手で用意した画像があるのに自動取得を呼んでいる")
+
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "ensure_photo", boom)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert "本日 1/1 本" in capsys.readouterr().out
 
 
 def test_採用できる題材が無ければ0本のまま終了する(tmp_path, monkeypatch, capsys):
@@ -854,19 +893,24 @@ def test_チャンネル取り違えは環境不備として即座に中止す�
 
 # --- Minor: レシピの書き出し位置 -------------------------------------------
 
-def test_画像未準備の題材のレシピは書き出さない(tmp_path, monkeypatch):
+def test_画像が取れなかった題材のレシピは書き出さない(tmp_path, monkeypatch):
     # recipes/ は「再現の単位」であって「検討した候補の記録」ではない。
     # 一度も動画にならなかった題材のレシピが溜まり続けないようにする。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
-    no_photo = _candidate("no_photo")
-    ok = _candidate("ok")
+    no_photo = _candidate("no_photo", "画像が取れない題材")
+    ok = _candidate("ok", "画像が取れる題材")
     _write_candidates([no_photo, ok], work)
-    _prepare_photo(work / ok["id"])
+
+    def fake_ensure_photo(ev, dest):
+        if "no_photo" in str(dest):
+            raise RuntimeError("使える画像が見つかりませんでした")
+        return _fake_ensure_photo(ev, dest)
 
     _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "ensure_photo", fake_ensure_photo)
     monkeypatch.setattr("sys.argv", ["run_daily.py"])
 
     run_daily.main()

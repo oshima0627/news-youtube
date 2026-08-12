@@ -52,6 +52,11 @@ class Evidence:
     figure: str        # 具体的な数値（無ければ空）
     quote: str         # 逐語引用（無ければ空）
     context: str       # 会議名・統計名・発表日など
+    # 発言者名。context にも入っているが、そちらは画面に出す表示用の文字列
+    # なので、書式が変わると意味が変わる。画像の自動取得（commons.resolve）は
+    # この名前で ja.wikipedia の記事を引くため、表示用の文字列を切り出すのでは
+    # なく独立した項目として持つ。発言系以外の系統では空。
+    speaker: str = ""
 
 
 def _is_primary_host(url: str) -> bool:
@@ -128,7 +133,8 @@ def parse_speeches(payload: dict) -> list[Evidence]:
                             source_url=rec.get("speechURL") or "",
                             figure="",
                             quote=quote,
-                            context=context))
+                            context=context,
+                            speaker=speaker))
     return out
 
 

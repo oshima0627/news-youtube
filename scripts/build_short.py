@@ -34,14 +34,30 @@ from scripts.cards import (HOLE_TOP, PHOTO_H, SHORT_SIZE, render_figure,  # noqa
 from scripts.narrate import TARGET_MAX, TARGET_MIN, wav_duration_seconds  # noqa: E402
 
 
-def _fill(img: Image.Image, size: tuple[int, int]) -> Image.Image:
-    """アスペクト比を保ったまま size を覆うように拡大し、中央で切り取る。"""
+# 縦方向の切り取り位置。0 が上端、0.5 が中央、1 が下端。
+#
+# 写真は人物のポートレート（縦長）が大半で、写真枠は横長（1080x659）なので、
+# 縦に大きく切り落とすことになる。中央で切ると**頭の上が欠ける**
+# （実測: 高市早苗・櫛渕万里・平口洋の公式ポートレートで額から上が欠けた）。
+# 顔は写真の上寄りにあるので、切り取り位置も上に寄せる。
+# 0.10 / 0.15 / 0.22 を実画像で見比べて 0.15 を採った（0.22 では髪の上が
+# 欠け始め、0.10 では顔の上に余白が残って顎が下端に寄る）。
+# 横長の写真では縦の余りがほとんど無いため、この値はほぼ効かない。
+PHOTO_ANCHOR_Y = 0.15
+
+
+def _fill(img: Image.Image, size: tuple[int, int],
+          anchor_y: float = PHOTO_ANCHOR_Y) -> Image.Image:
+    """アスペクト比を保ったまま size を覆うように拡大して切り取る。
+
+    横方向は中央、縦方向は anchor_y の位置で切る。
+    """
     tw, th = size
     scale = max(tw / img.width, th / img.height)
     resized = img.resize((max(1, round(img.width * scale)),
                           max(1, round(img.height * scale))), Image.LANCZOS)
     left = (resized.width - tw) // 2
-    top = (resized.height - th) // 2
+    top = round((resized.height - th) * anchor_y)
     return resized.crop((left, top, left + tw, top + th))
 
 

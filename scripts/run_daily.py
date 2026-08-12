@@ -4,8 +4,11 @@
   python scripts/run_daily.py
   python scripts/run_daily.py --dry-run   # アップロードだけ飛ばす
 
-タスクスケジューラから毎朝1回呼ばれる。当日のまだ来ていない枠の数だけ作り、
-YouTube側の予約公開に載せて終わる。PCが日中落ちていても定刻に公開される。
+1回の実行で、当日のまだ来ていない枠の数だけ作り、YouTube側の予約公開に
+載せて終わる。PCが日中落ちていても定刻に公開される。
+
+手で起動する運用を前提にしている（タスクスケジューラに登録してもよいが、
+必須ではない）。画像は発言者から自動で取るので、事前準備は要らない。
 """
 
 from __future__ import annotations
@@ -46,12 +49,15 @@ JST = timezone(timedelta(hours=9))
 
 from scripts.build_short import build  # noqa: E402
 from scripts.collect_news import EXIT_NO_TOPIC  # noqa: E402
+from scripts.commons import credit as commons_credit  # noqa: E402
+from scripts.commons import resolve as resolve_photo  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     EvidenceSourcesUnavailable,
     build_recipe,
     collect,
 )
 from scripts.narrate import synthesize  # noqa: E402
+from scripts.photos import download as download_photo  # noqa: E402
 from scripts.script_writer import (  # noqa: E402
     ScriptGenerationRejected,
     ScriptWriterUnavailable,
@@ -81,6 +87,23 @@ def _bump_empty_streak(made: int) -> None:
     STREAK.write_text(json.dumps({"days": n}) + "\n", encoding="utf-8")
     if n >= 3:
         print(f"! {n}日続けて0本です。RSSの配点か採用ゲートを見直してください")
+
+
+def ensure_photo(ev, dest: Path) -> dict:
+    """発言者から画像を決めて落とし、license.json 用の記録を返す。
+
+    取得元は commons.resolve が決める（発言者の ja.wikipedia 記事画像 →
+    取れなければ国会議事堂）。ダウンロードは photos.download を通すので、
+    ホスト（upload.wikimedia.org）のホワイトリスト検証がもう一度かかる。
+    見つからなければ例外を送出し、呼び出し側がこの題材だけ飛ばす。
+    """
+    info = resolve_photo(ev.speaker)
+    if not info:
+        raise RuntimeError(
+            f"使える画像が見つかりませんでした（発言者: {ev.speaker or '不明'}）")
+    who = "汎用画像" if info.get("is_fallback") else f"{info['article']} の記事画像"
+    print(f"  画像: {who}（{info['license_name']}）")
+    return download_photo(info["url"], dest, credit=commons_credit(info))
 
 
 QUOTE_EXCERPT_MAX_CHARS = 25
@@ -256,23 +279,24 @@ def main() -> None:
 
             workdir = WORK / cand["id"]
 
-            # 画像（photo.jpg / license.json）は題材ごとに人物・場面が違うため、
-            # fetch_photo.py で手作業で用意しておく運用になっている
-            # （scripts/photos.py のホワイトリストの都合で自動解決していない）。
-            # 無いまま台本生成・音声合成に進むと、後で必ず失敗するとわかっている
-            # 処理に Anthropic API の課金と VOICEVOX の時間を使うだけになるので、
-            # ここで先に確認してこの題材だけ飛ばす。
+            # 画像は発言者から自動で決める（ja.wikipedia の記事画像 →
+            # 取れなければ国会議事堂）。台本生成・音声合成の**前**に取りに行く。
+            # 後回しにすると、画像で失敗すると分かっている題材に Anthropic API
+            # の課金と VOICEVOX の時間を使ってしまう。
+            # 手で用意した画像があるときはそれを尊重する（fetch_photo.py で
+            # 差し替えた1枚を、翌日の実行が黙って上書きしないため）。
             photo = workdir / "photo.jpg"
             license_path = workdir / "license.json"
-            missing = [n for n, p in (("photo.jpg", photo),
-                                      ("license.json", license_path))
-                      if not p.exists()]
-            if missing:
-                print(f"- 見送り（画像未準備: {', '.join(missing)}）: "
-                      f"{cand['id']} {cand['title'][:32]}\n"
-                      f"  python scripts/fetch_photo.py work/{cand['id']} "
-                      "<画像URL> で用意してから次回の実行で拾われます")
-                continue
+            if not (photo.exists() and license_path.exists()):
+                try:
+                    license_rec = ensure_photo(ev, photo)
+                except Exception as e:            # noqa: BLE001
+                    print(f"- 見送り（画像を取得できません）: "
+                          f"{cand['id']} {cand['title'][:32]} {e}")
+                    continue
+                license_path.write_text(
+                    json.dumps(license_rec, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
 
             # レシピの書き出しは画像チェックより**後ろ**に置く。前に置くと、
             # 画像が用意されず一度も動画にならなかった題材のレシピが

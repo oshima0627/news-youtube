@@ -23,6 +23,11 @@ import requests
 ALLOWED_HOSTS = ("upload.wikimedia.org",)
 ALLOWED_SUFFIX = ".go.jp"
 TIMEOUT = 30
+
+# Wikimedia は既定の python-requests の User-Agent を 403 で拒否する
+# （<https://meta.wikimedia.org/wiki/User-Agent_policy>）。名乗らないと
+# 画像だけが毎回落とせず、原因が「403」としか出ない。
+USER_AGENT = "news-youtube/1.0 (https://github.com/oshima0627/news-youtube)"
 EDITOR = "news-youtube"
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20MB
 
@@ -56,8 +61,12 @@ def attribution(url: str) -> str:
             f"※本コンテンツは上記を{EDITOR}が加工して作成しています。")
 
 
-def download(url: str, dest: Path) -> dict:
+def download(url: str, dest: Path, credit: str = "") -> dict:
     """画像を落として license.json 用の記録を返す。
+
+    `credit` を渡すとそれを出典表記に使う。Wikimedia の画像は作者と
+    ライセンス名を出す義務があり、URLだけの表記では足りないため、
+    取得元のメタデータを持っている呼び出し側（commons.credit）から渡す。
 
     最終URLのホワイトリスト検証とサイズ・Content-Type チェックを行う。
     リダイレクト迂回を防ぐため、requests の追従リダイレクト後の最終URL
@@ -67,7 +76,8 @@ def download(url: str, dest: Path) -> dict:
         raise ValueError(f"取得を許可していない出所です: {url}")
 
     # stream=True でレスポンスを受けながら、サイズ上限とContent-Type チェック
-    r = requests.get(url, timeout=TIMEOUT, stream=True)
+    r = requests.get(url, timeout=TIMEOUT, stream=True,
+                     headers={"User-Agent": USER_AGENT})
     r.raise_for_status()
 
     # リダイレクト後の最終URLも検証（リダイレクト迂回対策）
@@ -98,4 +108,5 @@ def download(url: str, dest: Path) -> dict:
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(b"".join(chunks))
-    return {"url": url, "attribution": attribution(url), "file": dest.name}
+    return {"url": url, "attribution": credit.strip() or attribution(url),
+            "file": dest.name}
