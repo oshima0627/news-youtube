@@ -1,3 +1,14 @@
 {
-  "videos": {}
+  "videos": {
+    "80378ef09649": {
+      "youtube_video_id": "VXV8qo7ztOw",
+      "url": "https://www.youtube.com/watch?v=VXV8qo7ztOw",
+      "title": "「イタリアは肉・魚が10%」片山大臣が語ったG7の食料品税率の実態",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/78",
+      "publish_at": "2026-08-12T18:30:00+09:00"
+    }
+  }
 }
