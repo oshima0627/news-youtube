@@ -43,3 +43,38 @@ def test_既出は除外され高得点順に並ぶ():
 
     seen = {make_id(items[0]["title"])}
     assert all(i["title"] != items[0]["title"] for i in rank(items, seen))
+
+
+# --- 題材の門番と検索語 ------------------------------------------------------
+
+MIXED_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>食料品消費税減税 政府が基本方針決定</title>
+    <link>https://www3.nhk.or.jp/news/html/10.html</link>
+  </item>
+  <item>
+    <title>北日本と東日本中心 9日も大気の状態が非常に不安定</title>
+    <link>https://www3.nhk.or.jp/news/html/11.html</link>
+  </item>
+</channel></rss>
+"""
+
+
+def test_国会で議論されえない題材は候補にしない():
+    # 残しても一次資料には当たらないか、当たっても無関係な答弁しか
+    # 返ってこない（実測では天気の見出しに令和五年度決算の質疑が付いた）。
+    got = rank(parse_feed(MIXED_XML), set())
+
+    assert [c["title"] for c in got] == ["食料品消費税減税 政府が基本方針決定"]
+
+
+def test_検索語は名詞を空白で区切ったものになる():
+    # 国会会議録APIの any は空白区切りのAND検索。見出しをそのまま渡すと
+    # 1件も当たらない（実測12件中0件）。
+    got = rank(parse_feed(MIXED_XML), set())
+
+    words = got[0]["keyword"].split()
+    assert 2 <= len(words) <= 3
+    assert all(w in got[0]["title"] for w in words)
+    assert got[0]["keyword"] != got[0]["title"]

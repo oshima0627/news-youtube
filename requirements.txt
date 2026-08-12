@@ -2,6 +2,9 @@
 # 使うため、これらが入ったバージョン以降を要求する。古い SDK だと
 # messages.parse そのものが無く AttributeError で毎朝落ちる。
 anthropic>=0.121
+# 見出しから検索語になる名詞を抜く（scripts/keywords.py）。純Pythonなので
+# Windows でビルド環境を用意せずに入る形態素解析器を選んでいる。
+janome
 pydantic
 pillow
 requests

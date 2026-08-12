@@ -45,6 +45,7 @@ CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 JST = timezone(timedelta(hours=9))
 
 from scripts.build_short import build  # noqa: E402
+from scripts.collect_news import EXIT_NO_TOPIC  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     EvidenceSourcesUnavailable,
     build_recipe,
@@ -159,6 +160,13 @@ def main() -> None:
         subprocess.run([sys.executable, "scripts/collect_news.py",
                         "--limit", "20"], check=True, cwd=ROOT)
     except subprocess.CalledProcessError as e:
+        # EXIT_NO_TOPIC は「フィードは取れたが、国会で議論されえない題材
+        # （天気・スポーツ）と既出を除いたら何も残らなかった」。環境は
+        # 正常なので中止せず、0本の日として静かに終える。
+        if e.returncode == EXIT_NO_TOPIC:
+            print("本日 0/{} 本（採れる題材がありませんでした）".format(len(slots)))
+            _bump_empty_streak(0)
+            return
         print(f"✗ 候補の収集に失敗しました。RSSの取得元に接続できないなど"
               f"環境不備の可能性が高いため日次実行を中止します"
               f"（終了コード {e.returncode}）", file=sys.stderr)
@@ -179,6 +187,11 @@ def main() -> None:
     aborted = False
     evidence_failures = 0        # 連続して EvidenceSourcesUnavailable になった数
     evidence_ok = False          # 一度でも一次資料の取得に成功したか
+    # 同じ日に同じ発言を根拠にした動画を2本作らないための記録。RSSには
+    # 同じ出来事の見出しが各社から並ぶ（「消費税減税 基本方針決定」と
+    # 「食料品の消費税減税 5日にも閣議決定」など）ため、素通しにすると
+    # 朝と夕方でほぼ同じ内容の動画が並び、まさに量産型と見なされる。
+    used_sources: set[str] = set()
 
     try:
         for cand in candidates:
@@ -216,7 +229,13 @@ def main() -> None:
             if not found:
                 print(f"- 見送り（根拠なし）: {cand['title'][:32]}")
                 continue
-            ev = found[0]
+
+            # found は関連性の高い順。当日すでに使った発言は飛ばして次点を採る。
+            ev = next((e for e in found if e.source_url not in used_sources), None)
+            if ev is None:
+                print(f"- 見送り（同じ発言を本日すでに使用）: "
+                      f"{cand['title'][:32]}")
+                continue
 
             workdir = WORK / cand["id"]
 
@@ -373,6 +392,7 @@ def main() -> None:
             # 手動公開待ちになる」ほうが実害が小さいので、既出に入れる方を選ぶ。
             if not a.dry_run:
                 seen.add(cand["id"])
+            used_sources.add(ev.source_url)
             made += 1
             mark = "（要手動公開）" if stuck_private else ""
             print(f"✓ {made}/{len(slots)} {script.title[:40]}{mark}")

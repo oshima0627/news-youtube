@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +56,11 @@ EVIDENCE = Evidence(
 BEFORE_SLOTS = datetime(2026, 8, 11, 6, 5, tzinfo=JST)
 SLOT_MORNING = datetime(2026, 8, 11, 7, 30, tzinfo=JST)
 SLOT_EVENING = datetime(2026, 8, 11, 18, 30, tzinfo=JST)
+
+
+def _evidence_for(keyword: str) -> Evidence:
+    """題材ごとに出典URLの違う根拠。"""
+    return replace(EVIDENCE, source_url=f"https://kokkai.ndl.go.jp/#/detail?q={keyword}")
 
 
 def _script(title: str = "テストタイトル", quote_excerpt: str = "十二文字以上ある逐語引用") -> Script:
@@ -153,7 +159,11 @@ def _mock_success_path(monkeypatch, fail_for: set[str] | None = None) -> FakeRun
     """collect/write/synthesize/build を正常系に固定し、FakeRun を返す。"""
     fake_run = FakeRun(fail_for=fail_for)
     monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
-    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE])
+    # 題材ごとに違う発言を返す。同じ発言を根拠にした動画を1日に2本作らない
+    # よう run_daily が source_url で重複を落とすので、全題材に同じ Evidence を
+    # 返すと2件目以降が「同じ発言を本日すでに使用」で飛ばされてしまう。
+    monkeypatch.setattr(run_daily, "collect",
+                        lambda keyword: [_evidence_for(keyword)])
     monkeypatch.setattr(run_daily, "write", lambda recipe: _script())
     monkeypatch.setattr(run_daily, "synthesize", lambda text, dest: dest)
     monkeypatch.setattr(run_daily, "build", lambda workdir: workdir / "video.mp4")
@@ -529,7 +539,11 @@ def test_音声合成が環境不備で失敗したら即座に中止する(tmp_
 
     fake_run = FakeRun()
     monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
-    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE])
+    # 題材ごとに違う発言を返す。同じ発言を根拠にした動画を1日に2本作らない
+    # よう run_daily が source_url で重複を落とすので、全題材に同じ Evidence を
+    # 返すと2件目以降が「同じ発言を本日すでに使用」で飛ばされてしまう。
+    monkeypatch.setattr(run_daily, "collect",
+                        lambda keyword: [_evidence_for(keyword)])
     monkeypatch.setattr(run_daily, "write", lambda recipe: _script())
     monkeypatch.setattr(run_daily, "synthesize", fake_synthesize)
     monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
@@ -549,8 +563,10 @@ def test_環境不備で中止してもそこまでの成功分はseenに残る(
     monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
-    ok = _candidate("ok")
-    broken = _candidate("broken")
+    # 題材ごとに違う見出しにする（_mock_success_path の collect は keyword
+    # ごとに違う発言を返すので、同じ見出しだと2件目が重複除外で飛ばされる）
+    ok = _candidate("ok", "題材ok")
+    broken = _candidate("broken", "題材broken")
     _write_candidates([ok, broken], work)
     _prepare_photo(work / ok["id"])
     _prepare_photo(work / broken["id"])
@@ -877,3 +893,78 @@ def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypa
 
     streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
     assert streak["days"] == 0
+
+
+# --- 同じ日に同じ発言を根拠にした動画を2本作らない -------------------------
+
+def test_同じ発言を根拠にした動画は1日に1本しか作らない(tmp_path, monkeypatch, capsys):
+    # RSSには同じ出来事の見出しが各社から並ぶ（「消費税減税 基本方針決定」と
+    # 「食料品の消費税減税 5日にも閣議決定」など）。素通しにすると朝と夕方で
+    # ほぼ同じ内容の動画が並び、まさに量産型と見なされる。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    first = _candidate("first", "消費税減税 基本方針決定")
+    second = _candidate("second", "食料品の消費税減税 閣議決定へ")
+    _write_candidates([first, second], work)
+    _prepare_photo(work / first["id"])
+    _prepare_photo(work / second["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    # 見出しは違うが、行き着く一次資料（発言）は同じというケース
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE])
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "同じ発言を本日すでに使用" in out
+    assert "本日 1/2 本" in out
+
+
+def test_別の発言が取れるなら次点を使って2本目を作る(tmp_path, monkeypatch, capsys):
+    # 重複除外は「その題材を捨てる」ではなく「別の根拠を探す」。collect() は
+    # 関連性の高い順に返すので、使用済みを飛ばして次点を採る。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    first = _candidate("first", "消費税減税 基本方針決定")
+    second = _candidate("second", "食料品の消費税減税 閣議決定へ")
+    _write_candidates([first, second], work)
+    _prepare_photo(work / first["id"])
+    _prepare_photo(work / second["id"])
+
+    other = replace(EVIDENCE, source_url="https://kokkai.ndl.go.jp/#/detail?x=2")
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily, "collect", lambda keyword: [EVIDENCE, other])
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()
+
+    assert "本日 2/2 本" in capsys.readouterr().out
+    sources = [json.loads((recipes / f"{c}.json").read_text(encoding="utf-8"))
+               ["evidence"]["source_url"] for c in ("first", "second")]
+    assert sources == [EVIDENCE.source_url, other.source_url]
+
+
+def test_採れる題材が無い日は中止せず0本で終える(tmp_path, monkeypatch, capsys):
+    # collect_news.py の EXIT_NO_TOPIC。天気やスポーツしか流れていない日は
+    # 環境不備ではないので exit 1 にせず、0本の日として streak に数える。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+
+    def no_topic(cmd, **kwargs):
+        raise subprocess.CalledProcessError(run_daily.EXIT_NO_TOPIC, cmd)
+
+    monkeypatch.setattr(run_daily.subprocess, "run", no_topic)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--dry-run"])
+
+    run_daily.main()          # SystemExit を上げない
+
+    assert "採れる題材がありませんでした" in capsys.readouterr().out
+    assert json.loads((state / "empty_streak.json").read_text(
+        encoding="utf-8"))["days"] == 1

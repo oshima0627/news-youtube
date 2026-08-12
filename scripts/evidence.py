@@ -132,8 +132,27 @@ def parse_speeches(payload: dict) -> list[Evidence]:
     return out
 
 
-def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
+SPEECH_LIMIT = 20
+
+# 何年前までの発言を根拠として認めるか。国会会議録は1947年から入っている
+# ので、指定しないと今日のニュースの根拠に10年前の答弁が返ってくる。
+# 会議名と日付は画面にも概要欄にも出るので古いこと自体は隠れないが、
+# 「今の政策の解説」として成立しなくなる。
+SPEECH_SINCE_YEARS = 3
+
+
+def since_date(today: date | None = None) -> str:
+    """検索対象にする最古の発言日（YYYY-MM-DD）。"""
+    d = today or date.today()
+    return d.replace(year=d.year - SPEECH_SINCE_YEARS).isoformat()
+
+
+def search_speeches(keyword: str, limit: int = SPEECH_LIMIT,
+                    since: str | None = None) -> list[Evidence]:
     """国会会議録を全文検索する。認証キーは不要。
+
+    `keyword` は空白区切り。API の `any` は空白区切りのAND検索なので、
+    語を増やすほど絞られる（見出しをそのまま渡すと1件も当たらない）。
 
     一過性の失敗（5xx・タイムアウト等）は RETRY_ATTEMPTS 回まで指数バックオフ
     で粘り、それでも駄目なときだけ最後の例外を送出する。
@@ -143,6 +162,7 @@ def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
         try:
             r = requests.get(KOKKAI_ENDPOINT, timeout=TIMEOUT, params={
                 "any": keyword,
+                "from": since or since_date(),
                 "recordPacking": "json",
                 "maximumRecords": min(limit, 100),
             })
@@ -157,6 +177,94 @@ def search_speeches(keyword: str, limit: int = 10) -> list[Evidence]:
                   f"{attempt + 2}/{RETRY_ATTEMPTS}）: {e}")
             time.sleep(wait)
     raise last                             # type: ignore[misc]
+
+
+# --- 関連性の判定 --------------------------------------------------------
+#
+# 国会の発言は1件2,000〜3,000字あるので、「検索語がその発言のどこかに
+# 出てくる」を関連性の判定にすると何も判定できない。実測でも、その条件では
+# 12件中12件が「関連あり」になった一方、中身は消費税減税の見出しに対して
+# 憲法審査会の答弁、年金の見出しに対して NISA の答弁だった。
+#
+# そこで **異なる検索語が同じ文脈に固まって現れる箇所** を探し、そこだけを
+# 引用として切り出す。見つからなければその発言は根拠にしない。
+# これで「語がたまたま別々の話題に散らばっている発言」が落ちる。
+
+PASSAGE_WINDOW = 220      # 「同じ文脈」とみなす幅
+PASSAGE_LEAD = 60         # 最初の語より前を何字含めるか（文頭を拾うため）
+PASSAGE_TAIL = 100        # 最後の語より後ろを何字含めるか（文末を拾うため）
+PASSAGE_MIN_CHARS = 30    # 短すぎる断片は引用として使わない
+MIN_DISTINCT_KEYWORDS = 2  # 窓の中に必要な「異なる検索語」の数
+
+# 数値を含む箇所を優先するための目印。is_admissible の _FIGURE_RE ほど
+# 厳密でなくてよい（採否ではなく同点候補の順位付けにしか使わない）が、
+# 国会答弁は漢数字なので算用数字だけを見ていると全部素通りする。
+_PASSAGE_FIGURE_RE = re.compile(
+    r"[0-9０-９一二三四五六七八九十百千万億兆]+\s*"
+    r"(?:%|％|割|倍|兆円|億円|万円|円|人|件|年間|ポイント)")
+
+
+def find_passage(quote: str, words: list[str]) -> tuple[str, int] | None:
+    """検索語が近接して現れる箇所を切り出す。(引用, 得点) か None。
+
+    得点は同じ題材の候補どうしを比べるためだけのもので、採否には使わない
+    （採否は「切り出せたかどうか」そのもの）。異なる検索語が多く揃うほど、
+    そして数値を含むほど高い。
+    """
+    hits: list[tuple[int, str]] = []
+    for w in words:
+        start = 0
+        while (i := quote.find(w, start)) >= 0:
+            hits.append((i, w))
+            start = i + 1
+    if not hits:
+        return None
+    hits.sort()
+
+    best: tuple[str, int] | None = None
+    for i, (pos, _) in enumerate(hits):
+        # 自分より後ろにある語だけを見る（hits は位置順なので i 以降で足りる）
+        inside = [(p, w) for p, w in hits[i:] if p < pos + PASSAGE_WINDOW]
+        near = {w for _, w in inside}
+        if len(near) < MIN_DISTINCT_KEYWORDS:
+            continue
+
+        # 窓の終わりは「最後の検索語 + PASSAGE_TAIL」で決める。固定で
+        # pos + PASSAGE_WINDOW まで取ると、語が窓の手前に固まっている場合に
+        # 無関係な後続文を100字以上引きずり込む。
+        last = max(p for p, _ in inside)
+        lo = max(0, pos - PASSAGE_LEAD)
+        hi = min(len(quote), min(last + PASSAGE_TAIL, pos + PASSAGE_WINDOW))
+        seg = quote[lo:hi]
+
+        # 文の区切りに合わせる。検索語を含む文から始めて、検索語を含む文で
+        # 終える（前後にある無関係な文は落とす）。
+        #   - 頭は「最初の検索語より前にある**最後の**句点」の次から。
+        #     最初の句点で切ると、窓に入っただけの無関係な前文が残る。
+        #   - 尻は「最後の検索語より後ろにある**最初の**句点」まで。
+        #     最後の句点まで取ると、無関係な後続文を引きずり込む。
+        # 位置を見ずに切ると、検索語より後ろの句点で頭を切って引用が
+        # 丸ごと消える（根拠そのものが落ちる）。
+        first_rel, last_rel = pos - lo, last - lo
+        trimmed = seg
+        head = seg.rfind("。", 0, first_rel)
+        if head >= 0:
+            trimmed = trimmed[head + 1:]
+            last_rel -= head + 1
+        tail = trimmed.find("。", last_rel)
+        if tail >= 0:
+            trimmed = trimmed[:tail + 1]
+        trimmed = trimmed.strip()
+        # 文単位に詰めた結果が短くなりすぎたら、詰める前の窓を使う
+        # （1文が短い答弁で引用が消えるのを避ける）。
+        seg = trimmed if len(trimmed) >= PASSAGE_MIN_CHARS else seg.strip()
+        if len(seg) < PASSAGE_MIN_CHARS:
+            continue
+
+        pts = len(near) * 10 + (4 if _PASSAGE_FIGURE_RE.search(seg) else 0)
+        if best is None or pts > best[1]:
+            best = (seg, pts)
+    return best
 
 
 class EvidenceSourcesUnavailable(RuntimeError):
@@ -175,6 +283,11 @@ class EvidenceSourcesUnavailable(RuntimeError):
 def collect(keyword: str) -> list[Evidence]:
     """一次資料の各系統に当てて、採用条件を満たした根拠だけを返す。
 
+    `keyword` は空白区切りの検索語（keywords.extract の出力を join したもの）。
+    返す Evidence の `quote` は**発言全文ではなく、検索語が近接して現れる
+    箇所だけ**を切り出したものになる（find_passage 参照）。切り出せない
+    発言は題材と無関係とみなして落とす。関連性の高い順に並べて返す。
+
     現状は国会会議録（search_speeches）の1系統のみ。
     e-Stat 系統は一旦外してある — search_statistics が figure に入れていたのは
     統計表のメタデータ（調査年度・統計表ID）であって実際の統計値ではなく、
@@ -189,6 +302,14 @@ def collect(keyword: str) -> list[Evidence]:
     と区別するために EvidenceSourcesUnavailable を送出する。1系統以上が
     成功していれば（採用ゲートを通らなかっただけでも）従来どおり空リストを返す。
     """
+    words = keyword.split()
+    if len(words) < MIN_KEYWORDS:
+        # 語が足りないと find_passage の近接判定が成立せず、関連性を
+        # 確かめられないまま「当たった」ことになる。取得しに行かない。
+        print(f"- 検索語が {len(words)} 語しかないため一次資料に当てません"
+              f"（{MIN_KEYWORDS}語以上必要）: {keyword!r}")
+        return []
+
     found: list[Evidence] = []
     sources = (lambda: search_speeches(keyword),)
     failures: list[str] = []
@@ -204,4 +325,15 @@ def collect(keyword: str) -> list[Evidence]:
             f"一次資料の取得元が1系統も応答しませんでした（キーワード: {keyword}）: "
             + "; ".join(failures))
 
-    return [ev for ev in found if is_admissible(ev)]
+    scored: list[tuple[int, Evidence]] = []
+    for ev in found:
+        got = find_passage(ev.quote, words)
+        if not got:
+            continue
+        passage, pts = got
+        narrowed = replace(ev, quote=passage)
+        if is_admissible(narrowed):
+            scored.append((pts, narrowed))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [ev for _, ev in scored]
