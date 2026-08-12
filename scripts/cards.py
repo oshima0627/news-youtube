@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from scripts.draw import (INK, MUTED, NAVY, RED, fit_font, pick_font,
-                           truncate_ellipsis, wrap)
+from scripts.draw import (INK, MUTED, NAVY, RED, fit_font, normalize_numerals,
+                           pick_font, truncate_ellipsis, wrap)
 
 SHORT_SIZE = (1080, 1920)
 HOLE_TOP = 460            # 上帯の高さ
@@ -129,7 +129,13 @@ def render_quote(text: str, source: str) -> Image.Image:
 
     text は1行に収まらないことを前提に、2行に収まる最大のフォントサイズを
     探して折り返す（`fit_font()` は1行前提なので使えない）。
+
+    漢数字は算用数字に直して描く（「一〇％」→「10%」）。国会会議録は数字を
+    漢字で書き起こすため、そのまま出すと読みづらい。**表記だけを変えて値は
+    変えない**変換で、逐語であることの検証（run_daily.ensure_grounded_card）は
+    変換前の文字列に対して済んでいる。
     """
+    text = normalize_numerals(text)
     w = SHORT_SIZE[0]
     img = Image.new("RGB", (w, FIGURE_H), NAVY)
     d = ImageDraw.Draw(img)

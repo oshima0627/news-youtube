@@ -103,3 +103,25 @@ def test_引用カードは出典キャプションを持つ(capsys):
     out = capsys.readouterr().out
     assert "出典" in out
     assert "切り捨て" in out
+
+
+def test_引用カードは漢数字を算用数字で描く():
+    # 国会会議録は「一〇％」と書き起こす。そのまま出すと読めないので
+    # 描画の直前に表記を直す。同じ内容なら描かれる絵も同じになるはず。
+    from scripts.cards import render_quote
+
+    src = "第221回国会 参議院財政金融委員会 2026-06-16 片山さつき"
+    kanji = render_quote("肉、魚は一〇％なんですよ", src)
+    arabic = render_quote("肉、魚は10%なんですよ", src)
+
+    assert kanji.tobytes() == arabic.tobytes()
+
+
+def test_引用カードは命数法も読みやすく描く():
+    from scripts.cards import render_quote
+
+    src = "第217回国会 参議院内閣委員会 2025-04-15 谷滋行"
+    kanji = render_quote("詐欺被害が千六百三十億円に上り", src)
+    arabic = render_quote("詐欺被害が1630億円に上り", src)
+
+    assert kanji.tobytes() == arabic.tobytes()
