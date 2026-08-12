@@ -21,6 +21,10 @@ NAVY = (16, 24, 43)
 RED = (232, 48, 52)
 INK = (250, 250, 252)
 MUTED = (150, 158, 176)
+# テロップの文字色。濃紺地の上で最も視認性が高くなる暖色を選んでいる。
+# 白のままだと引用カードの文字と区別がつかず、どちらが「いま読んでいる所」か
+# 分からない。
+ORANGE = (255, 150, 26)
 
 
 # FONT_SANS が全滅したことを一度だけ警告するためのフラグ。pick_font は
@@ -183,25 +187,54 @@ def fit_font(draw: ImageDraw.ImageDraw, text: str, max_w: int,
 _NO_LINE_START = "、。，．！？」』）］｝〉》”’ー・"
 
 
+# 英数字の連なりは途中で折り返さない。1文字ずつ送ると「G7」が
+# 「G」／「7」に割れ、「10%」が「1」／「0%」に割れる（実際に起きた）。
+_ATOM_RE = re.compile(r"[0-9A-Za-z]+[%％]?|.", re.S)
+
+
 def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
          max_w: int) -> list[str]:
-    """日本語は単語境界が無いので、幅を見て1文字ずつ折り返す。
+    """日本語は単語境界が無いので、幅を見て折り返す。
 
-    行頭に来てはいけない文字は前の行に残す（禁則処理）。幅を1文字ぶん
+    英数字の連なりは1かたまりとして扱い、途中では切らない。
+    行頭に来てはいけない文字は前の行に残す（禁則処理）。幅を少し
     超えることになるが、「。」だけの行を作るよりは収まりがよい。
     """
     text = normalize_newlines(text)
     lines, cur = [], ""
-    for ch in text:
-        b = draw.textbbox((0, 0), cur + ch, font=font)
-        if b[2] - b[0] > max_w and cur and ch not in _NO_LINE_START:
+    for atom in _ATOM_RE.findall(text):
+        b = draw.textbbox((0, 0), cur + atom, font=font)
+        if b[2] - b[0] > max_w and cur and atom not in _NO_LINE_START:
             lines.append(cur)
-            cur = ch
+            cur = atom
         else:
-            cur += ch
+            cur += atom
     if cur:
         lines.append(cur)
     return lines
+
+
+def fit_wrapped(draw: ImageDraw.ImageDraw, text: str, max_w: int, max_h: int,
+                max_lines: int, start: int = 150, minimum: int = 40,
+                leading: float = 1.22):
+    """折り返した上で幅と高さに収まる、いちばん大きいフォントを返す。
+
+    `fit_font()` は1行に収める前提なので、短い見出しでも指定の上限までしか
+    大きくならず、帯に余白が残る。見出しは画面で一番強い要素にしたいので、
+    **2行に折り返してでも限界まで大きくする**。
+
+    戻り値は (font, lines)。minimum まで縮めても収まらなければ、その大きさで
+    折り返した結果をそのまま返す（切り捨ての判断は呼び出し側に任せる）。
+    """
+    size = start
+    while size > minimum:
+        font = pick_font(size)
+        lines = wrap(draw, text, font, max_w)
+        if len(lines) <= max_lines and int(size * leading) * len(lines) <= max_h:
+            return font, lines
+        size -= 4
+    font = pick_font(minimum)
+    return font, wrap(draw, text, font, max_w)
 
 
 def truncate_ellipsis(draw: ImageDraw.ImageDraw, text: str,

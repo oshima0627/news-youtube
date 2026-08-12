@@ -69,27 +69,29 @@ def test_figureがあれば数値カードを使う(tmp_path, monkeypatch):
 
 # --- C2: 字幕バンドにはナレーション全文を渡さない --------------------------
 
-def test_字幕バンドにはsubtitleを渡しナレーション全文は渡さない(tmp_path, monkeypatch):
-    # 字幕バンドは4行（実測60文字あまり）しか描画しない。ナレーション全文
-    # （350〜400字）を渡すと毎ビルド必ず切り捨て警告が出るうえ、画面には
-    # 文の途中で切れた冒頭だけが60秒間出続ける。
+def test_テロップ帯にはsubtitleを渡しナレーション全文は渡さない(tmp_path, monkeypatch):
+    # テロップの帯は3行しか描画しない。ナレーション全文（350〜400字）を
+    # 渡すと毎ビルド必ず切り捨て警告が出るうえ、画面には文の途中で切れた
+    # 冒頭だけが出続ける。同期テロップが作れなかったときの控えの経路。
+    from scripts.cards import TELOP_H
+
     calls = []
-    monkeypatch.setattr(build_short, "render_frame",
-                        lambda headline, subtitle: (
-                            calls.append((headline, subtitle)),
-                            Image.new("RGBA", SHORT_SIZE, (0, 0, 0, 0)))[1])
+    monkeypatch.setattr(build_short, "render_telop",
+                        lambda caption: (
+                            calls.append(caption),
+                            Image.new("RGB", (SHORT_SIZE[0], TELOP_H), (0, 0, 0)))[1])
 
     compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録")
 
-    assert calls == [("中国軍機が照射", "照射は攻撃の一歩手前")]
-    assert NARRATION not in [c[1] for c in calls]
+    assert calls == ["照射は攻撃の一歩手前"]
+    assert NARRATION not in calls
 
 
 def test_実際のビルド経路で字幕の切り捨て警告が出ない(tmp_path, capsys):
     # モックせずに描画まで通し、「毎ビルド必ず出る警告」が消えたことを確認する。
     compose_stage(_photo(tmp_path), SCRIPT, source="第217回国会 予算委員会")
     out = capsys.readouterr().out
-    assert "字幕が" not in out
+    assert "テロップが" not in out
 
 
 def test_mp4_duration_secondsはffprobeの出力を秒数として返す(tmp_path, monkeypatch):

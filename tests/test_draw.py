@@ -149,3 +149,35 @@ def test_閉じ括弧も行頭に落とさない():
     got = wrap(d, body + "」", font, box[2] - box[0])
 
     assert got == ["「あいうえお」"], got
+
+
+def test_英数字は途中で折り返さない():
+    # 1文字ずつ送ると見出しの「G7」が「G」／「7」に割れる（実際に起きた）。
+    from PIL import Image, ImageDraw
+
+    from scripts.draw import pick_font, wrap
+
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    font = pick_font(58)
+    head = "食料品の軽減、"
+    width = d.textbbox((0, 0), head + "G", font=font)[2]
+
+    got = wrap(d, head + "G7では", font, width)
+
+    assert got[0] == head
+    assert got[1].startswith("G7")
+
+
+def test_パーセントも数字から離れない():
+    from PIL import Image, ImageDraw
+
+    from scripts.draw import pick_font, wrap
+
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    font = pick_font(58)
+    head = "税率は"
+    width = d.textbbox((0, 0), head + "1", font=font)[2]
+
+    got = wrap(d, head + "10%です", font, width)
+
+    assert "10%" in got[1]

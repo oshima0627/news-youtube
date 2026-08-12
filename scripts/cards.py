@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """縦型ショートの描画。
 
-  上部の帯   見出し（2行まで）
-  中央の穴   上に実写、下に根拠カード（数値カード or 引用カード）
-  下部の帯   要点を字幕で（4行まで）
+  0〜340      見出し（2行まで。帯に収まる範囲でいちばん大きく）
+  340〜1080   実写
+  1080〜1360  テロップ（読み上げに同期して切り替わる。オレンジ）
+  1360〜1701  根拠カード（数値カード or 引用カード）
+  1701〜1920  空け
+
+**テロップは写真のすぐ下、根拠カードはその下。** 目線が上から
+「見出し → 顔 → いま読んでいる言葉 → その根拠」と自然に降りる並びにしている。
+
+**下端260pxは何も置かない。** Shorts の再生画面ではチャンネル名・タイトル・
+ボタン類が下から重なるので、そこに文字を置くと隠れる。
 
 根拠カードが「解説」の実体になる。これが無いと画像スライドショーと
 見分けがつかず、量産型コンテンツの判定に近づく。
@@ -20,48 +28,91 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from scripts.draw import (INK, MUTED, NAVY, RED, fit_font, normalize_numerals,
-                           pick_font, truncate_ellipsis, wrap)
+from scripts.draw import (INK, MUTED, NAVY, ORANGE, RED, fit_font, fit_wrapped,
+                           normalize_numerals, pick_font, truncate_ellipsis,
+                           wrap)
 
 SHORT_SIZE = (1080, 1920)
-HOLE_TOP = 460            # 上帯の高さ
-HOLE_BOTTOM = 1460        # 下帯の始まり
-PHOTO_H = 659             # 穴のうち実写が占める高さ
-FIGURE_H = HOLE_BOTTOM - (HOLE_TOP + PHOTO_H)
+HEADLINE_H = 340          # 見出しの帯
+PHOTO_TOP = HEADLINE_H
+PHOTO_H = 740             # 実写
+TELOP_TOP = PHOTO_TOP + PHOTO_H
+TELOP_H = 280             # テロップ
+CARD_TOP = TELOP_TOP + TELOP_H
+CARD_H = 341              # 根拠カード
+# CARD_TOP + CARD_H = 1701。以降 219px は Shorts のUIに隠れるので空ける。
+
+MARGIN = int(SHORT_SIZE[0] * 0.06)
+AVAIL = SHORT_SIZE[0] - MARGIN * 2
 
 
-def render_frame(headline: str, subtitle: str) -> Image.Image:
-    """上下の帯を描き、中央を透過にして返す。"""
-    w, h = SHORT_SIZE
-    img = Image.new("RGBA", SHORT_SIZE, NAVY + (255,))
+HEADLINE_MAX_LINES = 2
+TELOP_MAX_LINES = 3
+
+
+def render_headline(headline: str) -> Image.Image:
+    """見出しの帯。**画面で一番強い要素にする。**
+
+    サムネイル代わりに一瞬で内容を伝える場所なので、本文より一段大きく、
+    太い縁取りを付ける。左のオレンジの帯は見出しの始まりを示す目印で、
+    テロップの色とそろえてある。
+    """
+    img = Image.new("RGB", (SHORT_SIZE[0], HEADLINE_H), NAVY)
     d = ImageDraw.Draw(img)
-    d.rectangle([0, HOLE_TOP, w, HOLE_BOTTOM], fill=(0, 0, 0, 0))
 
-    m = int(w * 0.06)
-    avail = w - m * 2
+    # 帯に収まる範囲でいちばん大きくする。短い見出しほど大きくなり、
+    # 一瞬で内容が伝わる。
+    f, lines = fit_wrapped(d, headline, AVAIL - 40, HEADLINE_H - 56,
+                           HEADLINE_MAX_LINES, start=150, minimum=52)
+    if len(lines) > HEADLINE_MAX_LINES:
+        print(f"! 見出しが{len(lines) - HEADLINE_MAX_LINES}行溢れて"
+              f"切り捨てられました: {headline[:20]}")
+    lines = lines[:HEADLINE_MAX_LINES]
 
-    f = fit_font(d, headline[:20], avail, 92)
-    y = 96
-    headline_lines = wrap(d, headline, f, avail)
-    if len(headline_lines) > 2:
-        print(f"! 見出しが{len(headline_lines) - 2}行溢れて切り捨てられました: {headline[:20]}")
-    for ln in headline_lines[:2]:
-        d.text((m, y), ln, font=f, fill=INK + (255,),
-               stroke_width=8, stroke_fill=(0, 0, 0, 255))
-        d.text((m, y), ln, font=f, fill=INK + (255,))
-        y += int(f.size * 1.26)
+    step = int(f.size * 1.22)
+    block = step * len(lines)
+    y = max(24, (HEADLINE_H - block) // 2)      # 帯の中で縦に中央寄せ
 
-    d.rectangle([m, HOLE_BOTTOM + 40, m + 120, HOLE_BOTTOM + 48],
-                fill=RED + (255,))
+    # 見出しの左に立てるオレンジの縦帯
+    d.rectangle([MARGIN, y + 12, MARGIN + 14, y + block - 12], fill=ORANGE)
 
-    fs = pick_font(58)
-    y = HOLE_BOTTOM + 84
-    subtitle_lines = wrap(d, subtitle, fs, avail)
-    if len(subtitle_lines) > 4:
-        print(f"! 字幕が{len(subtitle_lines) - 4}行溢れて切り捨てられました: {subtitle[:20]}")
-    for ln in subtitle_lines[:4]:
-        d.text((m, y), ln, font=fs, fill=INK + (255,))
-        y += 76
+    for line in lines:
+        x = MARGIN + 40
+        d.text((x, y), line, font=f, fill=INK,
+               stroke_width=10, stroke_fill=(0, 0, 0))
+        d.text((x, y), line, font=f, fill=INK)
+        y += step
+    return img
+
+
+def render_telop(text: str) -> Image.Image:
+    """テロップ。写真のすぐ下に出す、いま読み上げている言葉。
+
+    色は白ではなくオレンジにする。引用カードの文字（白）と同じ色だと、
+    どちらが「いま読んでいる所」なのか見分けがつかない。
+    """
+    img = Image.new("RGB", (SHORT_SIZE[0], TELOP_H), NAVY)
+    d = ImageDraw.Draw(img)
+
+    size = 66
+    f = pick_font(size)
+    lines = wrap(d, text, f, AVAIL)
+    while len(lines) > TELOP_MAX_LINES and size > 40:
+        size -= 4
+        f = pick_font(size)
+        lines = wrap(d, text, f, AVAIL)
+    if len(lines) > TELOP_MAX_LINES:
+        print(f"! テロップが{len(lines) - TELOP_MAX_LINES}行溢れて"
+              f"切り捨てられました: {text[:20]}")
+    lines = lines[:TELOP_MAX_LINES]
+
+    step = int(f.size * 1.24)
+    y = max(24, (TELOP_H - step * len(lines)) // 2)
+    for line in lines:
+        d.text((MARGIN, y), line, font=f, fill=ORANGE,
+               stroke_width=5, stroke_fill=(0, 0, 0))
+        d.text((MARGIN, y), line, font=f, fill=ORANGE)
+        y += step
     return img
 
 
@@ -76,7 +127,7 @@ def _draw_source(d: ImageDraw.ImageDraw, source: str, m: int, avail: int) -> Non
     if len(source_lines) > SOURCE_MAX_LINES:
         print(f"! 出典が{len(source_lines) - SOURCE_MAX_LINES}行溢れて切り捨てられました: {source[:20]}")
     shown = source_lines[:SOURCE_MAX_LINES]
-    y = FIGURE_H - 56 - (len(shown) - 1) * 40
+    y = CARD_H - 56 - (len(shown) - 1) * 40
     for ln in shown:
         d.text((m, y), ln, font=sf, fill=MUTED)
         y += 40
@@ -97,9 +148,9 @@ def render_figure(label: str, value: str, source: str) -> Image.Image:
     切り詰めが発生したら警告を出す。
     """
     w = SHORT_SIZE[0]
-    img = Image.new("RGB", (w, FIGURE_H), NAVY)
+    img = Image.new("RGB", (w, CARD_H), NAVY)
     d = ImageDraw.Draw(img)
-    m = int(w * 0.06)
+    m = MARGIN
     avail = w - m * 2
 
     d.rectangle([0, 0, w, 6], fill=RED)
@@ -137,9 +188,9 @@ def render_quote(text: str, source: str) -> Image.Image:
     """
     text = normalize_numerals(text)
     w = SHORT_SIZE[0]
-    img = Image.new("RGB", (w, FIGURE_H), NAVY)
+    img = Image.new("RGB", (w, CARD_H), NAVY)
     d = ImageDraw.Draw(img)
-    m = int(w * 0.06)
+    m = MARGIN
     avail = w - m * 2
 
     d.rectangle([0, 0, w, 6], fill=RED)

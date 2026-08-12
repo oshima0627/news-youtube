@@ -29,8 +29,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
 
-from scripts.cards import (HOLE_TOP, PHOTO_H, SHORT_SIZE, render_figure,  # noqa: E402
-                           render_frame, render_quote)
+from scripts.draw import NAVY  # noqa: E402
+from scripts.cards import (CARD_TOP, PHOTO_H, PHOTO_TOP, SHORT_SIZE,  # noqa: E402
+                           TELOP_TOP, render_figure, render_headline,
+                           render_quote, render_telop)
 from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
                              wav_duration_seconds)
 from scripts.telop import spans as telop_spans  # noqa: E402
@@ -69,30 +71,30 @@ def _fill(img: Image.Image, size: tuple[int, int],
 
 def compose_base(photo: Path, script: dict, source: str,
                  figure: str = "") -> Image.Image:
-    """実写＋根拠カードだけを焼いた土台。上下の帯はまだ載せない。
+    """見出し＋実写＋根拠カードを焼いた土台。テロップの帯だけ空けておく。
 
     テロップは1本の動画で20枚前後に切り替わる。毎回ここからやり直すと
-    写真の拡大縮小を20回繰り返すことになるので、変わらない部分だけを
-    先に1枚作っておき、帯（render_frame）だけを差し替える。
+    写真の拡大縮小を20回繰り返すことになるので、変わらない部分を先に
+    1枚作っておき、テロップの帯だけを差し替える。
     """
     w, _ = SHORT_SIZE
-    stage = Image.new("RGB", SHORT_SIZE, (16, 24, 43))
+    stage = Image.new("RGB", SHORT_SIZE, NAVY)
+    stage.paste(render_headline(script["headline"]), (0, 0))
 
     with Image.open(photo) as im:
-        stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, HOLE_TOP))
+        stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, PHOTO_TOP))
 
     card = (render_figure(script["figure_label"], script["figure_value"], source)
             if figure.strip()
             else render_quote(script["quote_excerpt"], source))
-    stage.paste(card, (0, HOLE_TOP + PHOTO_H))
+    stage.paste(card, (0, CARD_TOP))
     return stage
 
 
-def compose_over(base: Image.Image, headline: str, caption: str) -> Image.Image:
-    """土台に上下の帯を載せて1枚に焼く。caption は下帯に出す文字列。"""
+def compose_over(base: Image.Image, caption: str) -> Image.Image:
+    """土台にテロップの帯を載せて1枚に焼く。"""
     stage = base.copy()
-    frame = render_frame(headline, caption)
-    stage.paste(frame, (0, 0), frame)
+    stage.paste(render_telop(caption), (0, TELOP_TOP))
     return stage
 
 
@@ -111,7 +113,7 @@ def compose_stage(photo: Path, script: dict, source: str,
     なるうえ、画面には文の途中で切れた冒頭だけが60秒間出続ける。
     """
     base = compose_base(photo, script, source, figure)
-    return compose_over(base, script["headline"], script["subtitle"])
+    return compose_over(base, script["subtitle"])
 
 
 def plan_frames(workdir: Path, script: dict,
@@ -139,7 +141,7 @@ def plan_frames(workdir: Path, script: dict,
     return [(script["subtitle"], 0.0, voice_duration)]
 
 
-def write_frames(workdir: Path, base: Image.Image, headline: str,
+def write_frames(workdir: Path, base: Image.Image,
                  frames: list[tuple[str, float, float]]) -> Path:
     """テロップごとの1枚絵を書き出し、ffmpeg の concat リストを返す。"""
     stage_dir = workdir / "frames"
@@ -150,7 +152,7 @@ def write_frames(workdir: Path, base: Image.Image, headline: str,
     lines: list[str] = []
     for i, (caption, start, end) in enumerate(frames):
         path = stage_dir / f"{i:03d}.png"
-        compose_over(base, headline, caption).save(path)
+        compose_over(base, caption).save(path)
         lines.append(f"file '{path.name}'")
         lines.append(f"duration {end - start:.3f}")
     # concat デマルチプレクサは最後のファイルをもう一度並べないと、
@@ -161,7 +163,7 @@ def write_frames(workdir: Path, base: Image.Image, headline: str,
     concat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # 1枚目は stage.png としても残す（目視確認用）
-    compose_over(base, headline, frames[0][0]).save(workdir / "stage.png")
+    compose_over(base, frames[0][0]).save(workdir / "stage.png")
     return concat_path
 
 
@@ -227,7 +229,7 @@ def build(workdir: Path) -> Path:
 
     base = compose_base(workdir / "photo.jpg", script, source, figure)
     frames = plan_frames(workdir, script, voice_duration)
-    concat_path = write_frames(workdir, base, script["headline"], frames)
+    concat_path = write_frames(workdir, base, frames)
 
     out = workdir / "video.mp4"
     cmd = [
