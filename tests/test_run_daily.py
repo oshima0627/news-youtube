@@ -185,7 +185,7 @@ def _mock_success_path(monkeypatch, fail_for: set[str] | None = None) -> FakeRun
 
 def test_枠が無い日は何も作らずに終了する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [])
 
     def _boom(cmd, **kwargs):
         raise AssertionError("枠が無いのに subprocess.run を呼んでいる")
@@ -195,7 +195,10 @@ def test_枠が無い日は何も作らずに終了する(tmp_path, monkeypatch,
 
     run_daily.main()
 
-    assert "本日の枠は過ぎています" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "対象の枠は過ぎています" in out
+    # 翌日分を作る手段があることを案内する（手で起動する運用のため）
+    assert "--days-ahead" in out
     assert not (state / "seen.json").exists()
     assert not (state / "empty_streak.json").exists()
 
@@ -204,7 +207,7 @@ def test_枠より採用できた題材が少ないときは無理に埋めず�
     # 枠2つに対して候補は1件だけ採用できる状況を検証する（枠 > 採用数）。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("only1")
@@ -225,7 +228,7 @@ def test_枠より採用できた題材が少ないときは無理に埋めず�
 def test_複数候補があっても枠の数までしか作らない(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]  # 枠1つ
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cands = [_candidate("a"), _candidate("b")]
@@ -245,7 +248,7 @@ def test_複数候補があっても枠の数までしか作らない(tmp_path, 
 def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     ok = _candidate("ok")
@@ -268,7 +271,7 @@ def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
 def test_dry_run実行時はseenを更新しない(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     cand = _candidate("only1")
     _write_candidates([cand], work)
@@ -290,7 +293,7 @@ def test_dry_run実行時はseenを更新しない(tmp_path, monkeypatch, capsys
 def test_scheduleには対象枠のISO8601文字列が渡される(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("only1")
@@ -313,7 +316,7 @@ def test_枠を過ぎてから完成した題材は予約せずprivateのまま�
         tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     # アップロード直前の再確認時点で、対象枠(18:30)をわずかに過ぎている状況を再現する
     _freeze_now(monkeypatch, datetime(2026, 8, 11, 18, 31))
 
@@ -340,7 +343,7 @@ def test_枠を過ぎてから完成した題材は予約せずprivateのまま�
 def test_1本の失敗が当日全体を落とさない(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     bad = _candidate("bad")
@@ -374,7 +377,7 @@ def test_一次資料の取得が連続3件失敗したら環境不備として�
     # だけでその日が0本になるので、連続 EVIDENCE_FAILURE_LIMIT 件で初めて中止する。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     cands = [_candidate(f"c{i}", f"題材{i}") for i in range(5)]
     _write_candidates(cands, work)
@@ -411,7 +414,7 @@ def test_一次資料の取得が1回失敗しても次の候補へ進む(tmp_pa
     # 一過性の 5xx が1回混ざっただけで日全体を落とさない（I2 の本題）。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     flaky = _candidate("flaky", "一時的に失敗")
@@ -444,7 +447,7 @@ def test_全候補で一次資料の取得に失敗したら中止する(tmp_pat
     # 終わらせない。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     _write_candidates([_candidate("only1")], work)
 
@@ -464,7 +467,7 @@ def test_全候補で一次資料の取得に失敗したら中止する(tmp_pat
 def test_台本生成が環境不備で失敗したら即座に中止する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     cands = [_candidate("first"), _candidate("second")]
     _write_candidates(cands, work)
@@ -506,7 +509,7 @@ def test_台本生成が題材固有の理由で拒否されたらその題材�
         tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     rejected = _candidate("rejected")
@@ -539,7 +542,7 @@ def test_台本生成が題材固有の理由で拒否されたらその題材�
 def test_音声合成が環境不備で失敗したら即座に中止する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     cand = _candidate("only1")
     _write_candidates([cand], work)
@@ -573,7 +576,7 @@ def test_音声合成が環境不備で失敗したら即座に中止する(tmp_
 def test_環境不備で中止してもそこまでの成功分はseenに残る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     # 題材ごとに違う見出しにする（_mock_success_path の collect は keyword
@@ -604,7 +607,7 @@ def test_画像を取得できない題材だけ飛ばす(tmp_path, monkeypatch,
     # 画像は発言者から自動で取る。取れないときだけ、その題材を飛ばす。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     no_photo = _candidate("no_photo", "画像が取れない題材")
@@ -641,7 +644,7 @@ def test_画像を取得できない題材だけ飛ばす(tmp_path, monkeypatch,
 def test_手で用意した画像があれば自動取得で上書きしない(tmp_path, monkeypatch, capsys):
     # fetch_photo.py で差し替えた1枚を、次の実行が黙って上書きしてはいけない。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("manual")
@@ -663,7 +666,7 @@ def test_手で用意した画像があれば自動取得で上書きしない(t
 def test_採用できる題材が無ければ0本のまま終了する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     _write_candidates([_candidate("nofound")], work)
 
@@ -685,7 +688,7 @@ def test_0本が3日続くと警告が出る(tmp_path, monkeypatch, capsys):
     (state / "empty_streak.json").write_text(
         json.dumps({"days": 2}), encoding="utf-8")
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     # 候補は取れているが根拠が無かった日（＝正常系の0本）。候補0件は
     # 環境不備として非0終了するので、streak の対象にはならない。
@@ -744,7 +747,7 @@ def test_figureがある一次資料では引用の検証をせず数値カー�
 def test_書き出すscript_jsonの引用が一次資料の部分文字列になっている(tmp_path, monkeypatch):
     # ensure_grounded_card が build() より前に効いていることを実際の経路で確認する。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("only1")
@@ -773,7 +776,7 @@ def test_書き出すscript_jsonの引用が一次資料の部分文字列にな
 
 def test_候補が0件なら環境不備として非0終了する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _write_candidates([], work)
 
     monkeypatch.setattr(run_daily.subprocess, "run", FakeRun())
@@ -791,7 +794,7 @@ def test_候補が0件なら環境不備として非0終了する(tmp_path, monk
 
 def test_collect_newsが非0終了したら日次実行を中止する(tmp_path, monkeypatch, capsys):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
 
     monkeypatch.setattr(run_daily.subprocess, "run",
                         FakeRun(fail_for={"collect_news.py"}))
@@ -810,7 +813,7 @@ def test_upload成功後にscheduleが落ちても既出に入れる(tmp_path, m
     # 既出に入れないと、翌日また同じ題材を作って**もう1本**アップロードする
     # （upload_youtube.py に重複防止が無い）。stuck_private と同じ扱い。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("only1")
@@ -833,7 +836,7 @@ def test_upload成功後にscheduleが落ちても既出に入れる(tmp_path, m
 def test_uploadの1回目で落ちた題材は既出に入れない(tmp_path, monkeypatch):
     # こちらは YouTube 上に何も残っていないので、次回また拾えるようにする
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cand = _candidate("only1")
@@ -856,7 +859,7 @@ def test_チャンネル取り違えは環境不備として即座に中止す�
     # 終了コード0の「本日 0/2 本」になってしまう。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots",
-                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     cands = [_candidate("first"), _candidate("second")]
@@ -897,7 +900,7 @@ def test_画像が取れなかった題材のレシピは書き出さない(tmp_
     # recipes/ は「再現の単位」であって「検討した候補の記録」ではない。
     # 一度も動画にならなかった題材のレシピが溜まり続けないようにする。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     no_photo = _candidate("no_photo", "画像が取れない題材")
@@ -924,7 +927,7 @@ def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypa
     (state / "empty_streak.json").write_text(
         json.dumps({"days": 2}), encoding="utf-8")
     slots = [SLOT_MORNING]
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: slots)
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
 
     cand = _candidate("only1")
     _write_candidates([cand], work)
@@ -947,7 +950,7 @@ def test_同じ発言を根拠にした動画は1日に1本しか作らない(tm
     # ほぼ同じ内容の動画が並び、まさに量産型と見なされる。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots",
-                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     first = _candidate("first", "消費税減税 基本方針決定")
@@ -973,7 +976,7 @@ def test_別の発言が取れるなら次点を使って2本目を作る(tmp_pa
     # 関連性の高い順に返すので、使用済みを飛ばして次点を採る。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots",
-                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     first = _candidate("first", "消費税減税 基本方針決定")
@@ -999,7 +1002,7 @@ def test_採れる題材が無い日は中止せず0本で終える(tmp_path, mo
     # collect_news.py の EXIT_NO_TOPIC。天気やスポーツしか流れていない日は
     # 環境不備ではないので exit 1 にせず、0本の日として streak に数える。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(run_daily, "pending_slots", lambda now: [SLOT_MORNING])
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: [SLOT_MORNING])
 
     def no_topic(cmd, **kwargs):
         raise subprocess.CalledProcessError(run_daily.EXIT_NO_TOPIC, cmd)
@@ -1021,7 +1024,7 @@ def test_同じ出来事の見出しは1日に1本しか作らない(tmp_path, m
     # 取れてしまうため素通りした。朝と夕方で同じ出来事の動画が並ぶ。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots",
-                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     first = dict(_candidate("first", "消費税減税 基本方針決定"),
@@ -1049,7 +1052,7 @@ def test_出来事が違えば2本作る(tmp_path, monkeypatch, capsys):
     # 同じ出来事とみなすと、この日は片方しか作れなくなる。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(run_daily, "pending_slots",
-                        lambda now: [SLOT_MORNING, SLOT_EVENING])
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
     _freeze_now(monkeypatch, BEFORE_SLOTS)
 
     first = dict(_candidate("first", "外国人の永住許可 世帯年収を考慮"),

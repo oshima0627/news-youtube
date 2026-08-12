@@ -40,3 +40,26 @@ def test_タイムゾーン付きの枠はISO8601にオフセット付きで整�
     # タイムゾーンが落ちると YouTube 側の予約がUTC扱いになり9時間ずれる。
     got = pending_slots(datetime(2026, 8, 11, 6, 0, tzinfo=JST))
     assert got[0].isoformat() == "2026-08-11T07:30:00+09:00"
+
+
+def test_翌日の枠を先に作れる():
+    # 手で起動する運用では、夜に翌朝の分を用意したいことがある。
+    # 当日の枠が過ぎていると days_ahead=0 では何も返らず、何も作れない。
+    from datetime import datetime
+
+    from scripts.slots import pending_slots
+
+    got = pending_slots(datetime(2026, 8, 12, 20, 0), days_ahead=1)
+
+    assert [s.strftime("%m-%d %H:%M") for s in got] == ["08-13 07:30", "08-13 18:30"]
+
+
+def test_翌日指定でも過ぎた枠は返さない():
+    from datetime import datetime
+
+    from scripts.slots import pending_slots
+
+    # 翌日の朝の枠より後（＝ありえないが、境界の挙動を固定しておく）
+    got = pending_slots(datetime(2026, 8, 13, 12, 0), days_ahead=0)
+
+    assert [s.strftime("%H:%M") for s in got] == ["18:30"]

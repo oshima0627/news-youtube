@@ -171,11 +171,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
                     help="台本・音声・動画までは作るが、YouTubeへのアップロードは行わない")
+    ap.add_argument("--days-ahead", type=int, default=0, metavar="N",
+                    help="何日先の枠に載せるか（1で翌日の朝・夕の2枠）")
     a = ap.parse_args()
 
-    slots = pending_slots(datetime.now(JST))
+    slots = pending_slots(datetime.now(JST), a.days_ahead)
     if not slots:
-        print("本日の枠は過ぎています。明朝に回します")
+        print("対象の枠は過ぎています。--days-ahead 1 で翌日分を作れます")
         return
     print(f"- 本日の残り枠: {[s.strftime('%H:%M') for s in slots]}")
 
