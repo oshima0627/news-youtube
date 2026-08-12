@@ -40,20 +40,26 @@ cd C:\Users\oshim\Documents\projects\news-youtube
    `narrate.ensure_engine()` が未起動なら既知の候補パスから自動起動を試みるが、
    見つからなければ手動起動を促すメッセージを出して止まる。
 
-## 自動で走るもの
+## 1本作るとき
 
-タスクスケジューラが毎朝 06:00 に `run_daily.py` を起動する。
-当日の残り枠の数だけ作り、07:30 / 18:30 の予約公開に載せて終わる。
-PC が日中落ちていても YouTube 側が定刻に公開する。
+```bash
+python scripts/run_daily.py
+```
+
+**手で起動する運用。** その時点の残り枠の数だけ作り、07:30 / 18:30 の予約公開に
+載せて終わる。PC が日中落ちていても YouTube 側が定刻に公開する。
+毎朝の自動起動にしたい場合は末尾「タスクスケジューラへの登録（任意）」を参照。
+
+画像の事前準備は要らない。**発言者の顔写真を自動で取ってくる**（下記「画像」）。
 
 ```
-06:00  run_daily.py
+run_daily.py
   ├─ collect_news.py          RSS巡回 → 候補20件
   │                           天気・スポーツ等は候補にしない
   └─ 候補を上から順に
        ├─ 当日すでに使った出来事・発言なら見送り
        ├─ evidence.collect()  ★採用ゲート（根拠が無ければ見送り）
-       ├─ 画像が無ければ見送り（下記「画像」参照）
+       ├─ commons.resolve()   発言者の顔写真を自動取得（下記「画像」参照）
        ├─ script_writer.write()   一次資料だけを渡して台本生成
        ├─ narrate.synthesize()    VOICEVOXで音声合成
        ├─ build_short.build()     図解カード + 音声 → 1080x1920
@@ -87,7 +93,8 @@ PC が日中落ちていても YouTube 側が定刻に公開する。
   - `script_writer.write()` が `ScriptGenerationRejected` を送出したとき
     （Anthropic の安全フィルタによる refusal、構造化出力の失敗など。
     政治ニュースを扱う以上、特定の題材の内容だけが理由で起こりうる）
-  - 画像未準備（下記「画像」参照）
+  - 画像を取得できなかったとき（発言者の記事画像も国会議事堂も取れない、
+    Wikimedia 側の障害など）
   - `build_short.build()` の失敗（ffmpeg関連など）
   - `upload_youtube.py` の一時的なエラー（取り違えの終了コード3は除く）。
     ただし**1回目の private アップロードが成功した後**に `--schedule` が
@@ -124,21 +131,28 @@ PC が日中落ちていても YouTube 側が定刻に公開する。
   - 終了コードが1のときは環境不備の疑いがある（メッセージに原因が出る）。
     ログを確認して `ANTHROPIC_API_KEY` / VOICEVOX の状態を直す。
 
-- **画像** — `run_daily.py` は画像を自動取得しない（人物・場面が題材ごとに
-  違うため）。翌朝の候補になりそうな題材が見えたら、あらかじめ
+- **画像** — 事前準備は要らない。`run_daily.py` が発言者名から
+  **ja.wikipedia のその人物の記事画像**を取り、Commons でライセンス
+  （CC BY / CC BY-SA / CC0 / PD のみ）と大きさを確かめて使う。
+  人物名の全文検索は使っていない（別人や集合写真が混ざり、誰が写っているかを
+  機械的に確かめられないため）。記事と人物は1対1なので写っている人物が確定する。
+
+  発言者の画像が無いとき（政府参考人など。実測で11人中3人）は
+  **国会議事堂の写真**に落ちる。国会での発言を扱う番組なので、題材が
+  何であっても文脈から外れない。両方だめなときだけ、その題材を見送る。
+
+  自動で選ばれた画像が題材に合わないときは、手で差し替えられる:
 
   ```bash
-  python scripts/collect_news.py --limit 20   # 候補一覧を work/candidates.json に作る
-  python scripts/fetch_photo.py work/<id> <画像URL>
+  python scripts/fetch_photo.py work/<id> --speaker 片山さつき   # 別の人物で探す
+  python scripts/fetch_photo.py work/<id> <画像URL>              # URLを直接指定
   ```
 
-  で `work/<id>/photo.jpg` と `license.json` を用意しておく。
-  取得元は首相官邸・各府省（`*.go.jp`）と Wikimedia Commons
-  （`upload.wikimedia.org`）のみに限定されており、ホワイトリスト外のURLは
-  `ValueError` で弾かれる（詳細は README の「画像素材」を参照）。
-  画像が無いまま `run_daily.py` の実行時刻を迎えた題材は、
-  「見送り（画像未準備）」というメッセージとともに**その題材だけ**飛ばされ、
-  `work/` に残るので翌日以降にまた候補として拾われる。
+  `run_daily.py` は `photo.jpg` と `license.json` が既にあれば自動取得を
+  行わないので、置いた画像は次の実行でも尊重される。
+  URLを直接指定する場合の取得元は首相官邸・各府省（`*.go.jp`）と
+  Wikimedia Commons（`upload.wikimedia.org`）のみで、ホワイトリスト外は
+  `ValueError` で弾かれる。
 
 ## 事故ったとき
 
@@ -160,12 +174,12 @@ python scripts/unpublish.py --all-today  # 当日分を全部戻す
 - [ ] `ANTHROPIC_API_KEY` が環境変数にあること
 - [ ] `token.json` が `UCYHTfHJOoETzvpx-VZlUTng`（日本の最新ニュースまるわかり）
       に紐づいていること（`python scripts/upload_youtube.py --auth-only` で確認できる）
-- [ ] 直近の候補に画像（`work/<id>/photo.jpg` + `license.json`）を用意済みであること
+- [ ] （画像の事前準備は不要。発言者から自動で取る）
 
-## タスクスケジューラへの登録
+## タスクスケジューラへの登録（任意）
 
-**管理者権限の PowerShell** で実行する（このリポジトリの自動化フローでは実行していない。
-オーナー自身が管理者権限で登録すること）:
+手で起動する運用なら不要。毎朝自動で走らせたい場合だけ、
+**管理者権限の PowerShell** で実行する（オーナー自身が登録すること）:
 
 ```powershell
 schtasks /create /tn "news-youtube" /tr "python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py" /sc daily /st 06:00 /f

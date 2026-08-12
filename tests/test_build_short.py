@@ -126,3 +126,32 @@ def test_verify_durationは範囲外でも例外にしない(tmp_path, monkeypat
     monkeypatch.setattr(build_short, "mp4_duration_seconds", lambda p: 30.0)
     got = build_short.verify_duration(tmp_path / "video.mp4")
     assert got == 30.0
+
+
+def test_写真は上寄りで切り取る():
+    # 人物のポートレート（縦長）を横長の写真枠に入れるので縦に大きく切り落とす。
+    # 中央で切ると頭の上が欠ける（実測: 高市早苗・櫛渕万里・平口洋の公式
+    # ポートレートで額から上が欠けた）。顔は上寄りにあるので上を残す。
+    from PIL import Image
+
+    from scripts.build_short import _fill
+
+    src = Image.new("RGB", (100, 1000), (0, 0, 255))      # 下は青
+    src.paste(Image.new("RGB", (100, 300), (255, 0, 0)), (0, 0))   # 上30%は赤
+
+    got = _fill(src, (100, 100))
+
+    # 中央で切っていれば青一色になる位置
+    assert got.getpixel((50, 50)) == (255, 0, 0)
+
+
+def test_写真の切り取り位置は指定できる():
+    from PIL import Image
+
+    from scripts.build_short import _fill
+
+    src = Image.new("RGB", (100, 1000), (0, 0, 255))
+    src.paste(Image.new("RGB", (100, 300), (255, 0, 0)), (0, 0))
+
+    assert _fill(src, (100, 100), anchor_y=0.5).getpixel((50, 50)) == (0, 0, 255)
+    assert _fill(src, (100, 100), anchor_y=0.0).getpixel((50, 50)) == (255, 0, 0)

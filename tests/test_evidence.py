@@ -244,6 +244,7 @@ def test_build_recipeは候補と根拠から再現可能なレシピを作る()
             "figure": ev.figure,
             "quote": ev.quote,
             "context": ev.context,
+            "speaker": ev.speaker,
         },
     }
 

@@ -114,3 +114,51 @@ def test_download_許可外urlではネットワークアクセスしない():
 
             # requests.get が呼ばれていないことを確認
             mock_get.assert_not_called()
+
+
+def test_downloadはUser_Agentを名乗る(tmp_path, monkeypatch):
+    # Wikimedia は既定の python-requests の User-Agent を 403 で拒否する。
+    # 名乗らないと画像だけが毎回落とせず、原因が「403」としか出ない。
+    # <https://meta.wikimedia.org/wiki/User-Agent_policy>
+    from scripts import photos
+
+    captured: dict = {}
+
+    class _Resp:
+        url = "https://upload.wikimedia.org/x.jpg"
+        headers = {"content-type": "image/jpeg", "content-length": "9"}
+
+        def raise_for_status(self): pass
+        def iter_content(self, chunk_size=8192): yield b"jpegbytes"
+
+    def fake_get(url, timeout=None, stream=None, headers=None):
+        captured["headers"] = headers or {}
+        return _Resp()
+
+    monkeypatch.setattr(photos.requests, "get", fake_get)
+
+    photos.download("https://upload.wikimedia.org/x.jpg", tmp_path / "p.jpg")
+
+    assert captured["headers"].get("User-Agent") == photos.USER_AGENT
+    assert "python-requests" not in captured["headers"].get("User-Agent", "")
+
+
+def test_downloadは渡された出典表記を使う(tmp_path, monkeypatch):
+    # Wikimedia の画像は作者とライセンス名の表示が必要で、URLだけの
+    # 既定表記では足りない。取得元のメタデータを持つ側から渡す。
+    from scripts import photos
+
+    class _Resp:
+        url = "https://upload.wikimedia.org/x.jpg"
+        headers = {"content-type": "image/jpeg"}
+
+        def raise_for_status(self): pass
+        def iter_content(self, chunk_size=8192): yield b"jpegbytes"
+
+    monkeypatch.setattr(photos.requests, "get",
+                        lambda url, timeout=None, stream=None, headers=None: _Resp())
+
+    rec = photos.download("https://upload.wikimedia.org/x.jpg", tmp_path / "p.jpg",
+                          credit="画像: 内閣官房内閣広報室 / CC BY 4.0（https://x）")
+
+    assert rec["attribution"] == "画像: 内閣官房内閣広報室 / CC BY 4.0（https://x）"
