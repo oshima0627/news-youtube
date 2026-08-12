@@ -20,6 +20,15 @@ from janome.tokenizer import Tokenizer
 # 生成に数百ミリ秒かかるので、モジュールに1つだけ持つ
 _TOKENIZER = Tokenizer()
 
+
+def tokenize(text: str):
+    """形態素に分ける。生成の重い Tokenizer を1つだけ共有するための入口。
+
+    テロップの改行位置（telop.py）も形態素の切れ目を使うので、
+    そちらからもこれを呼ぶ。
+    """
+    return _TOKENIZER.tokenize(text)
+
 # ニュース見出しに頻出するが、題材を絞る力が無い語。
 # 元号・年度は janome が固有名詞として拾うため優先度が最上位になってしまい、
 # 「令和7年度決算」の見出しで検索語が「令和」から始まって年金の話が
@@ -72,7 +81,7 @@ def extract(title: str, limit: int = MAX_KEYWORDS) -> list[str]:
     """
     propers: list[str] = []
     generals: list[str] = []
-    for tok in _TOKENIZER.tokenize(title):
+    for tok in tokenize(title):
         pos = tok.part_of_speech.split(",")
         if pos[0] != "名詞":
             continue

@@ -57,7 +57,7 @@ _NUM_CHARS = "".join(_KANJI_DIGIT) + "十百千" + _LARGE_LEAD
 # 意図的に入れていない**。「一分」が「1分」にならない代わりに、
 # 「十分（じゅうぶん）」が「10分」になる事故を防いでいる。
 _SAFE_UNITS = (
-    "ポイント", "メートル", "キロ", "グラム", "リットル", "トン",
+    "パーセント", "ポイント", "メートル", "キロ", "グラム", "リットル", "トン",
     "か月", "カ月", "箇月", "か国", "カ国", "箇国", "か所", "カ所", "箇所",
     "時間", "分間", "世帯", "議席", "ウォン", "ユーロ", "ドル",
     "％", "%", "円", "人", "件", "名", "票", "席", "個", "本", "台", "隻",
@@ -178,14 +178,23 @@ def fit_font(draw: ImageDraw.ImageDraw, text: str, max_w: int,
     return pick_font(14)
 
 
+# 行頭に置いてはいけない文字（禁則処理）。句読点や閉じ括弧が次の行の先頭に
+# 落ちると、テロップでは「。」だけの行ができて目立つ（実測で発生した）。
+_NO_LINE_START = "、。，．！？」』）］｝〉》”’ー・"
+
+
 def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
          max_w: int) -> list[str]:
-    """日本語は単語境界が無いので、幅を見て1文字ずつ折り返す。"""
+    """日本語は単語境界が無いので、幅を見て1文字ずつ折り返す。
+
+    行頭に来てはいけない文字は前の行に残す（禁則処理）。幅を1文字ぶん
+    超えることになるが、「。」だけの行を作るよりは収まりがよい。
+    """
     text = normalize_newlines(text)
     lines, cur = [], ""
     for ch in text:
         b = draw.textbbox((0, 0), cur + ch, font=font)
-        if b[2] - b[0] > max_w and cur:
+        if b[2] - b[0] > max_w and cur and ch not in _NO_LINE_START:
             lines.append(cur)
             cur = ch
         else:

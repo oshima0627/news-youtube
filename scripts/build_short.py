@@ -31,7 +31,10 @@ if str(ROOT) not in sys.path:
 
 from scripts.cards import (HOLE_TOP, PHOTO_H, SHORT_SIZE, render_figure,  # noqa: E402
                            render_frame, render_quote)
-from scripts.narrate import TARGET_MAX, TARGET_MIN, wav_duration_seconds  # noqa: E402
+from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
+                             wav_duration_seconds)
+from scripts.telop import spans as telop_spans  # noqa: E402
+from scripts.telop import stretch  # noqa: E402
 
 
 # 縦方向の切り取り位置。0 が上端、0.5 が中央、1 が下端。
@@ -64,6 +67,35 @@ def _fill(img: Image.Image, size: tuple[int, int],
     return resized.crop((left, top, left + tw, top + th))
 
 
+def compose_base(photo: Path, script: dict, source: str,
+                 figure: str = "") -> Image.Image:
+    """実写＋根拠カードだけを焼いた土台。上下の帯はまだ載せない。
+
+    テロップは1本の動画で20枚前後に切り替わる。毎回ここからやり直すと
+    写真の拡大縮小を20回繰り返すことになるので、変わらない部分だけを
+    先に1枚作っておき、帯（render_frame）だけを差し替える。
+    """
+    w, _ = SHORT_SIZE
+    stage = Image.new("RGB", SHORT_SIZE, (16, 24, 43))
+
+    with Image.open(photo) as im:
+        stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, HOLE_TOP))
+
+    card = (render_figure(script["figure_label"], script["figure_value"], source)
+            if figure.strip()
+            else render_quote(script["quote_excerpt"], source))
+    stage.paste(card, (0, HOLE_TOP + PHOTO_H))
+    return stage
+
+
+def compose_over(base: Image.Image, headline: str, caption: str) -> Image.Image:
+    """土台に上下の帯を載せて1枚に焼く。caption は下帯に出す文字列。"""
+    stage = base.copy()
+    frame = render_frame(headline, caption)
+    stage.paste(frame, (0, 0), frame)
+    return stage
+
+
 def compose_stage(photo: Path, script: dict, source: str,
                   figure: str = "") -> Image.Image:
     """実写＋根拠カード＋上下の帯を1枚に焼く。
@@ -78,20 +110,59 @@ def compose_stage(photo: Path, script: dict, source: str,
     渡すと4行＝60文字あまりしか描画されず、残り全部が毎ビルド切り捨て警告に
     なるうえ、画面には文の途中で切れた冒頭だけが60秒間出続ける。
     """
-    w, _ = SHORT_SIZE
-    stage = Image.new("RGB", SHORT_SIZE, (16, 24, 43))
+    base = compose_base(photo, script, source, figure)
+    return compose_over(base, script["headline"], script["subtitle"])
 
-    with Image.open(photo) as im:
-        stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, HOLE_TOP))
 
-    card = (render_figure(script["figure_label"], script["figure_value"], source)
-            if figure.strip()
-            else render_quote(script["quote_excerpt"], source))
-    stage.paste(card, (0, HOLE_TOP + PHOTO_H))
+def plan_frames(workdir: Path, script: dict,
+                voice_duration: float) -> list[tuple[str, float, float]]:
+    """下帯に出す文字列と、その表示区間を決める。
 
-    frame = render_frame(script["headline"], script["subtitle"])
-    stage.paste(frame, (0, 0), frame)
-    return stage
+    ナレーションに同期したテロップを基本にする。静止画に固定の要点を
+    60秒出し続けるのは「解説、教育的価値が最小限の画像スライドショー」
+    そのもので、YouTube が収益化不可としている量産型コンテンツの
+    例示に当てはまる。
+
+    音声合成に使った audio_query（voice_query.json）が無い、または本文と
+    音声の区切りが対応しないときは、従来どおり script["subtitle"] を
+    1枚だけ出す。テロップが無い動画のほうが、作れない動画よりましなので。
+    """
+    query_file = query_path(workdir / "voice.wav")
+    if query_file.exists():
+        query = json.loads(query_file.read_text(encoding="utf-8"))
+        items = telop_spans(script["narration"], query)
+        if items:
+            return stretch(items, voice_duration)
+    else:
+        print("! voice_query.json が無いためテロップを付けません"
+              "（narrate.py で音声を作り直すと付きます）")
+    return [(script["subtitle"], 0.0, voice_duration)]
+
+
+def write_frames(workdir: Path, base: Image.Image, headline: str,
+                 frames: list[tuple[str, float, float]]) -> Path:
+    """テロップごとの1枚絵を書き出し、ffmpeg の concat リストを返す。"""
+    stage_dir = workdir / "frames"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    for stale in stage_dir.glob("*.png"):
+        stale.unlink()              # 前回の残りを混ぜない
+
+    lines: list[str] = []
+    for i, (caption, start, end) in enumerate(frames):
+        path = stage_dir / f"{i:03d}.png"
+        compose_over(base, headline, caption).save(path)
+        lines.append(f"file '{path.name}'")
+        lines.append(f"duration {end - start:.3f}")
+    # concat デマルチプレクサは最後のファイルをもう一度並べないと、
+    # 末尾の1枚が1コマだけになって最後のテロップが一瞬で消える
+    lines.append(f"file '{len(frames) - 1:03d}.png'")
+
+    concat_path = stage_dir / "frames.txt"
+    concat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # 1枚目は stage.png としても残す（目視確認用）
+    compose_over(base, headline, frames[0][0]).save(workdir / "stage.png")
+    return concat_path
 
 
 def mp4_duration_seconds(path: Path) -> float:
@@ -143,9 +214,6 @@ def build(workdir: Path) -> Path:
     source = recipe["evidence"]["context"]
     figure = recipe["evidence"].get("figure") or ""
 
-    stage_path = workdir / "stage.png"
-    compose_stage(workdir / "photo.jpg", script, source, figure).save(stage_path)
-
     voice_path = workdir / "voice.wav"
     # voice.wav の実尺を測り、-t で出力尺を明示的に確定させる。
     # 実測では -shortest 任せだと（静止画ループを -r 30 にフレームレート
@@ -157,10 +225,14 @@ def build(workdir: Path) -> Path:
     # 役割が重複するため外した。
     voice_duration = wav_duration_seconds(voice_path)
 
+    base = compose_base(workdir / "photo.jpg", script, source, figure)
+    frames = plan_frames(workdir, script, voice_duration)
+    concat_path = write_frames(workdir, base, script["headline"], frames)
+
     out = workdir / "video.mp4"
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1", "-i", str(stage_path),
+        "-f", "concat", "-safe", "0", "-i", str(concat_path),
         "-i", str(voice_path),
         "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
         "-r", "30", "-c:a", "aac", "-b:a", "192k",
@@ -172,13 +244,14 @@ def build(workdir: Path) -> Path:
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"ffmpegの実行に失敗しました（workdir={workdir}, "
-            f"stage={stage_path}, voice={voice_path}）:\n"
+            f"frames={concat_path}, voice={voice_path}）:\n"
             f"{e.stderr}"
         ) from e
 
     mp4_duration = verify_duration(out)
     print(f"  尺: voice.wav {voice_duration:.2f}秒 → video.mp4 {mp4_duration:.2f}秒"
           f"（差 {mp4_duration - voice_duration:+.2f}秒）")
+    print(f"  テロップ: {len(frames)}枚")
     print(f"  画像の出典: {license_['attribution'].splitlines()[0]}")
     return out
 

@@ -132,8 +132,19 @@ def wav_duration_seconds(wav_path: Path) -> float:
         return frames / float(rate)
 
 
+def query_path(dest: Path) -> Path:
+    """wav と対になる audio_query の保存先（voice.wav → voice_query.json）。"""
+    return dest.with_name(dest.stem + "_query.json")
+
+
 def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> float:
-    """speed_scale で1回合成して dest に書き、実尺（秒）を返す。"""
+    """speed_scale で1回合成して dest に書き、実尺（秒）を返す。
+
+    合成に使った audio_query も隣に残す。この中のモーラごとの子音長・母音長が
+    そのまま「どの句が何秒目に読まれるか」なので、テロップの割り付け
+    （scripts/telop.py）はこれを読む。音声認識も強制アライメントも要らない。
+    採用された speedScale の分だけ残るよう、再合成のたびに上書きする。
+    """
     q = requests.post(f"{ENGINE}/audio_query", timeout=TIMEOUT,
                       params={"text": text, "speaker": sid})
     q.raise_for_status()
@@ -145,6 +156,8 @@ def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> flo
     s.raise_for_status()
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(s.content)
+    query_path(dest).write_text(json.dumps(query, ensure_ascii=False),
+                                encoding="utf-8")
     return wav_duration_seconds(dest)
 
 
