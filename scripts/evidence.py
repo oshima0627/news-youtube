@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from datetime import date
 from urllib.parse import urlparse
 
 import requests
+
+from scripts.keywords import MIN_KEYWORDS
 
 # 一次資料として認めるホストのサフィックス。ここを広げると「解説」が「転載」に変わる
 # 許可範囲: 日本政府機関（*.go.jp）のオフィシャルサイト
