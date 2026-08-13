@@ -59,10 +59,28 @@ SYSTEM = """あなたは日本の政治・外交ニュースを扱う解説チ�
 """
 
 
+# 読み上げ1字あたりの秒数。実測（2026-08-13、青山龍星ノーマル、
+# speedScale=1.0、本番の台本6本）で 0.165〜0.181、平均 0.171。
+# 字数指定はこの値を通して narrate の許容範囲（TARGET_MIN/TARGET_MAX）に
+# 収まるようにする（tests/test_script_writer.py が両者を縛っている）。
+SECONDS_PER_CHAR = 0.171
+
+# もとは 350〜400字。実測では350字でも62.25秒あり、**どの本数でも必ず**
+# 56〜61秒を外して narrate.synthesize() の2回目の合成に入っていた。
+# 本番尺の合成は1回2分近くかかるので、字数指定が外れているだけで実行時間が
+# ほぼ倍になる。0.171秒/字で 56.4〜60.7秒になる範囲に寄せた。
+# なお2回目の合成（speedScale補正）は無くさない。モデルは指定字数を必ずしも
+# 守らないので、外れたときに尺を合わせる安全網は要る。
+NARRATION_MIN_CHARS = 330
+NARRATION_MAX_CHARS = 355
+
+NARRATION_SPAN = f"{NARRATION_MIN_CHARS}〜{NARRATION_MAX_CHARS}字"
+
+
 class Script(BaseModel):
     title: str = Field(description="YouTubeのタイトル。60文字以内。ハッシュタグは含めない")
     headline: str = Field(description="画面上部に出す見出し。20文字以内")
-    narration: str = Field(description="読み上げる本文。350〜400字")
+    narration: str = Field(description=f"読み上げる本文。{NARRATION_SPAN}")
     subtitle: str = Field(
         description="字幕バンドに出す要点。40文字以内")
     quote_excerpt: str = Field(
@@ -93,7 +111,8 @@ def build_prompt(recipe: dict) -> str:
         parts.append(f"  数値: {ev['figure']}")
     parts += [
         "",
-        "この一次資料だけを根拠に、60秒（350〜400字）のナレーションを書いてください。",
+        f"この一次資料だけを根拠に、60秒（{NARRATION_SPAN}）のナレーションを"
+        "書いてください。",
         "subtitle には、字幕バンドに出す要点を40文字以内で書いてください"
         "（ナレーション全文ではありません）。",
     ]

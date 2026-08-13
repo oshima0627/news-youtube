@@ -80,6 +80,43 @@ def _today_ids() -> list[str]:
     return ids
 
 
+def release_slot(video_id: str) -> None:
+    """記録から publish_at を落とし、privacy_status を private に直す。
+
+    run_daily.taken_slots() は published.json の publish_at を見て
+    「その枠は埋まっている」と判断する。非公開に戻した動画の publish_at を
+    残すと、**空いたはずの枠が永久に埋まったまま**になり、その枠には
+    二度と投稿されない。YouTube 側の予約は set_privacy が解除しているので、
+    記録の側もそこで合わせる。
+
+    記録に無い動画ID（手で上げたもの、記録が失われたもの）でも
+    緊急停止そのものは成立させたいので、ここでは何もせず黙って戻る。
+    """
+    if not PUBLISHED.exists():
+        return
+    try:
+        data = json.loads(PUBLISHED.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        # 記録の整備よりも「戻せた」ことのほうが大事なので、ここでは止めない
+        # （--all-today の入口 _today_ids() は同じ状況で原因つきに落ちる）。
+        print(f"! {PUBLISHED} を更新できませんでした（JSONとして読めません）。"
+              f"枠が埋まったままになるので手で publish_at を消してください: "
+              f"{video_id}", file=sys.stderr)
+        return
+
+    changed = False
+    for v in (data.get("videos") or {}).values():
+        if v.get("youtube_video_id") != video_id:
+            continue
+        v.pop("publish_at", None)
+        v["privacy_status"] = "private"
+        changed = True
+    if changed:
+        PUBLISHED.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("video_id", nargs="?")
@@ -105,6 +142,9 @@ def main() -> None:
             print(f"! 非公開に戻せませんでした（続行します）: "
                   f"https://www.youtube.com/watch?v={vid} {e}", file=sys.stderr)
             continue
+        # 記録を直すのは戻せたときだけ。失敗した動画の publish_at を落とすと、
+        # 実際には予約が生きている枠を空きと見なして2本目を載せてしまう。
+        release_slot(vid)
         print(f"✓ 非公開に戻しました: https://www.youtube.com/watch?v={vid}")
 
     ok = len(ids) - len(failed)

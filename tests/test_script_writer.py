@@ -1,6 +1,6 @@
 import pytest
 
-from scripts import script_writer
+from scripts import narrate, script_writer
 from scripts.script_writer import (
     Script,
     ScriptGenerationRejected,
@@ -39,7 +39,32 @@ def test_RSSのリンクはプロンプトに渡さない():
 
 def test_尺の指示が入る():
     got = build_prompt(RECIPE)
-    assert "350" in got and "400" in got
+    span = f"{script_writer.NARRATION_MIN_CHARS}〜{script_writer.NARRATION_MAX_CHARS}字"
+    assert span in got
+
+
+def test_ナレーションの字数指定は尺の許容範囲に収まる():
+    """台本の字数指定と、音声合成が許す尺（56〜61秒）を一致させる。
+
+    もとの指定は「350〜400字」だったが、実測（2026-08-13、青山龍星、
+    speedScale=1.0 の6本）では1字あたり約0.171秒で、**350字でも62.25秒**
+    あった。つまりどの本数でも必ず範囲外になり、narrate.synthesize() が
+    毎回2回目の合成に入っていた。本番尺の合成は1回2分近くかかるので、
+    字数指定が外れているだけで実行時間がほぼ倍になる。
+
+    2つの定数が別々に動くと同じズレがまた起きるので、ここで縛る。
+    """
+    assert (script_writer.NARRATION_MIN_CHARS
+            * script_writer.SECONDS_PER_CHAR) >= narrate.TARGET_MIN
+    assert (script_writer.NARRATION_MAX_CHARS
+            * script_writer.SECONDS_PER_CHAR) <= narrate.TARGET_MAX
+
+
+def test_プロンプトとスキーマに同じ字数指定が載る():
+    """モデルに渡る2箇所（プロンプトと Field の説明）がズレないこと。"""
+    span = f"{script_writer.NARRATION_MIN_CHARS}〜{script_writer.NARRATION_MAX_CHARS}字"
+    assert span in build_prompt(RECIPE)
+    assert span in Script.model_fields["narration"].description
 
 
 def test_字幕は40文字以内であることを指示する():

@@ -39,6 +39,7 @@ CANDIDATES = WORK / "candidates.json"
 SEEN = ROOT / "state" / "seen.json"
 USED = ROOT / "state" / "used.json"
 STREAK = ROOT / "state" / "empty_streak.json"
+PUBLISHED = ROOT / "state" / "published.json"
 CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 
 # 投稿枠も予約公開も JST 運用（slots.py / unpublish.py と同じ）。ローカル時刻
@@ -108,6 +109,48 @@ def save_used(today, source_url: str, keywords: set[str]) -> None:
     USED.parent.mkdir(parents=True, exist_ok=True)
     USED.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8")
+
+
+def taken_slots() -> set[datetime]:
+    """すでに予約が入っている枠（JST）。
+
+    枠は pending_slots が「まだ来ていない時刻」だけで決めていて、その枠が
+    **すでに埋まっているか**を見ていなかった。--days-ahead で先の日付ぶんを
+    作り置きすると、その日が来たときの定例実行が同じ枠にもう1本アップロード
+    してしまう（upload_youtube.py に重複防止は無いので、同じ時刻に2本並ぶ）。
+
+    予約を外した動画（unpublish.py）は publish_at を落とすので、ここには
+    出てこない＝枠が空いたものとして扱われる。
+    """
+    if not PUBLISHED.exists():
+        return set()
+    try:
+        data = json.loads(PUBLISHED.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        # 「予約済みは無い」と見なして進むと、埋まっている枠にもう1本載せる。
+        # 重複投稿を防ぐための情報なので、読めないなら止める。
+        print(f"✗ {PUBLISHED} が壊れています（JSONとして読めません）。"
+              f"どの枠が埋まっているか分からないまま実行すると同じ枠に"
+              f"2本目を載せてしまうため中止します: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    out: set[datetime] = set()
+    for key, v in (data.get("videos") or {}).items():
+        publish_at = v.get("publish_at")
+        if not publish_at:
+            continue
+        try:
+            dt = datetime.fromisoformat(publish_at)
+        except ValueError:
+            # 黙って無視すると、その枠が空いていることにして2本目を載せる。
+            # unpublish.py の同じ判断（必ず警告する）に合わせる。
+            print(f"! publish_at をパースできません（枠の判定から除きます）: "
+                  f"{key} publish_at={publish_at!r}")
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=JST)
+        out.add(dt.astimezone(JST))
+    return out
 
 
 def _bump_empty_streak(made: int) -> None:
@@ -213,6 +256,20 @@ def main() -> None:
         ap.error("--limit は1以上を指定してください")
 
     slots = pending_slots(datetime.now(JST), a.days_ahead)
+
+    # すでに予約が入っている枠は外す（詳細は taken_slots）。
+    taken = taken_slots()
+    if taken:
+        filled = [s for s in slots if s in taken]
+        if filled:
+            print(f"- 予約済みのため対象外: "
+                  f"{[s.strftime('%m/%d %H:%M') for s in filled]}")
+        slots = [s for s in slots if s not in taken]
+        if not slots:
+            # 「題材が無かった日」ではないので empty_streak には数えない。
+            print("空いている枠がありません（すべて予約済み）")
+            return
+
     if a.limit is not None:
         # 公開前に1本だけ差し替えたいとき、--days-ahead だけではその日の
         # **残り全部**を作ってしまい、すでに予約済みの枠に2本目が重なる

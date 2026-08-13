@@ -110,6 +110,85 @@ def test_publish_atがパース不能なら警告して対象から除外する(
     assert "パースできません" in out
 
 
+def test_非公開に戻したらpublish_atを記録から落とす(tmp_path, monkeypatch, capsys):
+    """予約を外した動画が枠を占有し続けないようにする。
+
+    run_daily.taken_slots() は state/published.json の publish_at を見て
+    「その枠は埋まっている」と判断する。非公開に戻した動画の publish_at を
+    残したままにすると、**空いたはずの枠が永久に埋まったまま**になり、
+    その枠には二度と投稿されない。YouTube 側の予約は set_privacy が
+    解除しているので、記録の側も合わせる。
+    """
+    path = _published(tmp_path, {
+        "aaa": {"youtube_video_id": "vid_a", "publish_at": "2026-08-14T07:30:00+09:00"},
+        "bbb": {"youtube_video_id": "vid_b", "publish_at": "2026-08-14T18:30:00+09:00"},
+    })
+    monkeypatch.setattr(unpublish, "PUBLISHED", path)
+    monkeypatch.setattr(unpublish, "get_service", _fake_service)
+    monkeypatch.setattr(unpublish, "set_privacy", lambda s, v, p: None)
+    monkeypatch.setattr("sys.argv", ["unpublish.py", "vid_a"])
+
+    unpublish.main()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert "publish_at" not in data["videos"]["aaa"]      # 枠が空く
+    assert data["videos"]["aaa"]["privacy_status"] == "private"
+    # 巻き添えにしない
+    assert data["videos"]["bbb"]["publish_at"] == "2026-08-14T18:30:00+09:00"
+
+
+def test_戻せなかった動画のpublish_atは残す(tmp_path, monkeypatch, capsys):
+    """YouTube 側の予約が生きているなら、記録の側も枠を占有したままにする。
+
+    落としてしまうと、実際には予約が生きている枠を空きと見なして
+    同じ時刻に2本目を載せる。
+    """
+    path = _published(tmp_path, {
+        "aaa": {"youtube_video_id": "vid_a", "publish_at": "2026-08-14T07:30:00+09:00"},
+    })
+
+    def _fail(service, vid, privacy):
+        raise RuntimeError("APIエラー")
+
+    monkeypatch.setattr(unpublish, "PUBLISHED", path)
+    monkeypatch.setattr(unpublish, "get_service", _fake_service)
+    monkeypatch.setattr(unpublish, "set_privacy", _fail)
+    monkeypatch.setattr("sys.argv", ["unpublish.py", "vid_a"])
+
+    with pytest.raises(SystemExit):
+        unpublish.main()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["videos"]["aaa"]["publish_at"] == "2026-08-14T07:30:00+09:00"
+
+
+def test_記録に無い動画IDを指定しても落ちない(tmp_path, monkeypatch, capsys):
+    """published.json に無い動画IDでも、YouTube 側は戻す。
+
+    手で上げた動画や、記録が失われた動画を戻せなくなると、
+    緊急停止手段としての意味が無くなる。
+    """
+    path = _published(tmp_path, {
+        "aaa": {"youtube_video_id": "vid_a", "publish_at": "2026-08-14T07:30:00+09:00"},
+    })
+    calls = []
+    monkeypatch.setattr(unpublish, "PUBLISHED", path)
+    monkeypatch.setattr(unpublish, "get_service", _fake_service)
+    monkeypatch.setattr(unpublish, "set_privacy",
+                        lambda s, v, p: calls.append(v))
+    monkeypatch.setattr("sys.argv", ["unpublish.py", "vid_unknown"])
+
+    unpublish.main()
+
+    assert calls == ["vid_unknown"]
+    assert data_unchanged(path)
+
+
+def data_unchanged(path) -> bool:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data["videos"]["aaa"]["publish_at"] == "2026-08-14T07:30:00+09:00"
+
+
 def test_video_id直接指定でその1件だけが対象になる(monkeypatch):
     calls = []
     monkeypatch.setattr(unpublish, "get_service", _fake_service)
