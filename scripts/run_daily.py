@@ -17,7 +17,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -156,14 +156,49 @@ def taken_slots() -> set[datetime]:
     return out
 
 
-def _bump_empty_streak(made: int) -> None:
-    """0本の日が続いたら警告する。収益化要件は90日で3本以上。"""
-    n = 0 if made else (json.loads(STREAK.read_text(encoding="utf-8"))["days"]
-                        if STREAK.exists() else 0) + 1
+def _bump_empty_streak(made: int, today: date) -> None:
+    """0本の日が続いたら警告する。収益化要件は90日で3本以上。
+
+    **「実行回数」ではなく「日」を数える。** 1日3回（06:00/12:00/16:00）
+    実行するようになったため、素朴に呼ばれるたびカウントすると、1日
+    まるごと空だっただけで days が3になって「3日続けて0本」と誤警告し、
+    逆に朝1本だけ作れた日は昼・夕の空実行ぶんだけ余計に食い込む。
+    そこで record は「まだ確定していない当日ぶん」を date/made で持ち、
+    days はそれより前に確定した連続空日数だけを表す。
+
+    - 保存されている date が今日と違う → その日は終わっている。
+      made が真なら streak は途切れたので 0、偽なら days+1 で確定させ、
+      そのうえで新しい「当日ぶん」を作り直す。
+    - date が今日と同じ → まだ当日の途中。made を OR するだけで
+      days はいじらない（同じ日に何度呼ばれても増えない）。
+
+    **確定は日をまたいだ最初の実行で起きる。** そのため空だった日の
+    「その日のうち」には days は増えず、警告は最短でも4日目の最初の
+    実行で出る（3日ぶん確定して初めて3になるため）。当日のうちに
+    確定させようとすると「今日はまだ枠が残っていて後で作るかもしれない」
+    を先読みすることになり、判断が複雑になる。1日待つだけなので許容する。
+    """
+    record = json.loads(STREAK.read_text(encoding="utf-8")) if STREAK.exists() else None
+    today_str = today.isoformat()
+
+    if record is not None and record.get("date") == today_str:
+        days = record["days"]
+        made_today = bool(record.get("made")) or bool(made)
+    elif record is not None:
+        # 前日ぶんが確定する。date/made が無い旧形式のファイルは
+        # 「前日は空だった」とみなして +1 する（安全側に倒す）。
+        days = 0 if record.get("made") else record["days"] + 1
+        made_today = bool(made)
+    else:
+        days = 0
+        made_today = bool(made)
+
     STREAK.parent.mkdir(parents=True, exist_ok=True)
-    STREAK.write_text(json.dumps({"days": n}) + "\n", encoding="utf-8")
-    if n >= 3:
-        print(f"! {n}日続けて0本です。RSSの配点か採用ゲートを見直してください")
+    STREAK.write_text(
+        json.dumps({"days": days, "date": today_str, "made": made_today}) + "\n",
+        encoding="utf-8")
+    if days >= 3:
+        print(f"! {days}日続けて0本です。RSSの配点か採用ゲートを見直してください")
 
 
 def ensure_photo(ev, dest: Path) -> dict:
@@ -259,6 +294,12 @@ def main() -> None:
         # 実際とは違う理由を表示して終わる。
         ap.error("--limit は1以上を指定してください")
 
+    # empty_streak の判定に使う「今日」。EXIT_NO_TOPIC 分岐（早期return）と
+    # 通常終了時の両方から _bump_empty_streak を呼ぶため、ここで一度だけ
+    # 決めて使い回す（呼び出しごとに datetime.now() を取り直すと、実行に
+    # 数分かかる日次実行の途中で日付をまたいだ場合に判定がぶれる）。
+    today = datetime.now(JST).date()
+
     slots = pending_slots(datetime.now(JST), a.days_ahead)
 
     # すでに予約が入っている枠は外す（詳細は taken_slots）。
@@ -297,7 +338,7 @@ def main() -> None:
         # 正常なので中止せず、0本の日として静かに終える。
         if e.returncode == EXIT_NO_TOPIC:
             print("本日 0/{} 本（採れる題材がありませんでした）".format(len(slots)))
-            _bump_empty_streak(0)
+            _bump_empty_streak(0, today)
             return
         print(f"✗ 候補の収集に失敗しました。RSSの取得元に接続できないなど"
               f"環境不備の可能性が高いため日次実行を中止します"
@@ -326,8 +367,8 @@ def main() -> None:
     #
     # **直近 USED_LOOKBACK_DAYS 日ぶんを読み込んでから始める。** 実行中だけの
     # 記録にしていたため、初日に公開した題材が翌日分でも同じ発言を根拠に
-    # もう1本作られた（出典URLまで同一だった）。
-    today = datetime.now(JST).date()
+    # もう1本作られた（出典URLまで同一だった）。today は関数冒頭で
+    # 決めたものを使い回す（empty_streak と同じ「今日」を指すため）。
     used_sources, used_keywords = load_used(today)
     if used_sources:
         print(f"- 直近{USED_LOOKBACK_DAYS}日で使った発言 {len(used_sources)}件を"
@@ -565,7 +606,7 @@ def main() -> None:
     if aborted:
         sys.exit(1)
     # 環境不備での中断は「題材が無い」わけではないので streak には数えない
-    _bump_empty_streak(made)
+    _bump_empty_streak(made, today)
 
 
 if __name__ == "__main__":
