@@ -55,9 +55,9 @@ def test_ナレーションの字数指定は尺の許容範囲に収まる():
     2つの定数が別々に動くと同じズレがまた起きるので、ここで縛る。
     """
     assert (script_writer.NARRATION_MIN_CHARS
-            * script_writer.SECONDS_PER_CHAR) >= narrate.TARGET_MIN
+            * narrate.SECONDS_PER_CHAR) >= narrate.TARGET_MIN
     assert (script_writer.NARRATION_MAX_CHARS
-            * script_writer.SECONDS_PER_CHAR) <= narrate.TARGET_MAX
+            * narrate.SECONDS_PER_CHAR) <= narrate.TARGET_MAX
 
 
 def test_プロンプトとスキーマに同じ字数指定が載る():

@@ -209,6 +209,26 @@ python scripts/unpublish.py --all-today  # 当日分を全部戻す
 schtasks /create /tn "news-youtube" /tr "python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py" /sc daily /st 06:00 /f
 ```
 
+**この形だとログが1行も残らない。** 無人実行の結果を後から見るには、
+`cmd /c` を挟んで出力をファイルに追記する:
+
+```powershell
+schtasks /create /tn "news-youtube" /tr "cmd /c python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py >> C:\Users\oshim\Documents\projects\news-youtube\run_daily.log 2>&1" /sc daily /st 06:00 /f
+```
+
+ログは **UTF-8（BOM無し）** で出る。Windows PowerShell 5.1 の
+`Get-Content` は既定が ANSI（cp932）なので、そのまま開くと全部化ける。
+**`-Encoding UTF8` を付けて読むこと**（`type` も同様に化ける。メモ帳は
+自動判別するのでそのまま読める）:
+
+```powershell
+Get-Content C:\Users\oshim\Documents\projects\news-youtube\run_daily.log -Encoding UTF8 -Tail 40
+```
+
+`run_daily.log` は `.gitignore` 済み。VOICEVOX が止まっていた日は
+エンジンの起動ログ（進捗バー）が数十行混ざるので、`- ` `✓ ` `! ` `✗ ` で
+始まる行だけを追うとよい。
+
 成功すると次のように表示される:
 
 ```

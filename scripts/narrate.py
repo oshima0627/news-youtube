@@ -64,6 +64,23 @@ SPEED_MAX = 1.35
 # 初回合成 + 最大この回数まで再合成する（合計で最大 MAX_RETRIES+1 回試行）。
 MAX_RETRIES = 2
 
+# 読み上げ1字あたりの秒数（speedScale=1.0）。実測（2026-08-13、青山龍星
+# ノーマル、本番の台本6本）で 0.165〜0.181、平均 0.171。
+# 1回目の speedScale をここから見積もる。決め打ちの 1.0 で始めると、
+# 台本が長いだけで必ず範囲外になり2回目の合成に入っていた
+# （本番尺の合成は1回2分近くかかるので、そのまま実行時間の倍増になる）。
+# 台本側の字数指定（script_writer.NARRATION_MIN/MAX_CHARS）を締めても
+# 解決しない。実測では締めた後も2本中1本が378字で返っている。
+SECONDS_PER_CHAR = 0.171
+
+
+def estimate_speed(text: str) -> float:
+    """その本文を目標の尺で読み切るための speedScale。可動域に収める。"""
+    if not text:
+        return 1.0
+    return max(SPEED_MIN,
+               min(SPEED_MAX, len(text) * SECONDS_PER_CHAR / TARGET_MID))
+
 # この環境の VOICEVOX エンジンは GUI アプリではなく、エンジン単体の実行ファイル
 # (run.exe) として配布・起動されている。配布形態によってインストール先が
 # 変わるため、候補パスを並べて上から順に探す。
@@ -206,9 +223,12 @@ def synthesize(text: str, dest: Path) -> Path:
     投稿されると、ensure_engine() が防いでいる「無音動画を無自覚に
     投稿する」のと同じ構造の失敗になる。そのため:
 
-      1. まず speedScale=1.0 で合成し、実尺を wav_duration_seconds() で測る。
+      1. まず字数から見積もった speedScale（estimate_speed）で合成し、
+         実尺を wav_duration_seconds() で測る。見積もりに使う秒/字は実測値
+         なので、たいていはこの1回で範囲に入る。
       2. 範囲外なら「実尺 ÷ 目標中央値(58.5秒)」の比で speedScale を
-         補正し、最大 MAX_RETRIES 回まで再合成する。
+         補正し、最大 MAX_RETRIES 回まで再合成する。見積もりが外れる
+         題材（読み方の癖・記号の多い本文）に対する安全網として残す。
       3. それでも収まらない場合は例外にせず最後の結果を採用する。
          このチャンネルの収益化条件は「90日で3本以上の投稿」なので、
          数秒尺がずれた動画を出すより1本を落とすほうが損失が大きい。
@@ -217,7 +237,7 @@ def synthesize(text: str, dest: Path) -> Path:
     ensure_engine()
     sid = _speaker_id()
 
-    speed = 1.0
+    speed = estimate_speed(text)
     duration = 0.0
     for attempt in range(1, MAX_RETRIES + 2):  # 初回 + 最大 MAX_RETRIES 回の再試行
         duration = _synthesize_once(text, sid, speed, dest)
