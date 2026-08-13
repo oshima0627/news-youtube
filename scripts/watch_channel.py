@@ -69,15 +69,27 @@ def parse_entries(xml: str) -> list[Entry]:
         published = entry.findtext("a:published", namespaces=ATOM)
         if not published:
             continue
-        out.append(Entry(published=datetime.fromisoformat(published),
+        parsed = datetime.fromisoformat(published)
+        if parsed.tzinfo is None:
+            # naive な値は aware な「今」（now_jst()）と比較した瞬間に
+            # TypeError になる。ここでタイムゾーンを推測して補うと、
+            # 実際とは違うタイムゾーンだった場合に判定を静かにズレさせる
+            # おそれがあるので、補うのではなくその entry ごと飛ばす。
+            continue
+        out.append(Entry(published=parsed,
                          title=(entry.findtext("a:title", namespaces=ATOM) or "").strip()))
     return out
 
 
 def count_recent(entries: list[Entry], now: datetime, within_days: int) -> int:
-    """直近 within_days 日に公開された本数。境界は含める。"""
+    """直近 within_days 日に公開された本数。境界は含める。
+
+    下限（limit）だけでなく上限（now）も見る。上限を見ないと、何らかの
+    理由で未来日付の entry が混ざったとき「直近」に数えてしまい、実際には
+    まだ公開されていない動画を理由に健全と判定してしまう。
+    """
     limit = now - timedelta(days=within_days)
-    return sum(1 for e in entries if e.published >= limit)
+    return sum(1 for e in entries if limit <= e.published <= now)
 
 
 def latest(entries: list[Entry]) -> Entry | None:
@@ -129,11 +141,23 @@ def main() -> None:
         ap.error("--within は0以上を指定してください")
 
     try:
-        entries = parse_entries(fetch_feed(a.channel))
+        feed_text = fetch_feed(a.channel)
     except Exception as e:                      # noqa: BLE001
         # 取得できない＝監視できていない。黙って成功にすると、監視が壊れた日から
         # 止まっていることに気づけなくなる。落として気づけるようにする。
         print(f"✗ チャンネルの公開状況を取得できませんでした: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        entries = parse_entries(feed_text)
+    except ET.ParseError as e:
+        # 取得はできたが中身がフィード（XML）になっていない。YouTubeが
+        # エラーページや同意画面（HTML）を返した可能性が高く、
+        # 「取得できなかった」（ネットワーク不通など）とは原因が違うので
+        # 診断メッセージも分ける。どちらも終了コードは1のまま。
+        print(f"✗ 取得した内容がフィードとして読めませんでした"
+              f"（YouTubeがエラーページや同意画面を返した可能性があります）: {e}",
+              file=sys.stderr)
         sys.exit(1)
 
     now = now_jst()

@@ -59,6 +59,21 @@ def test_公開日時が無いentryは飛ばす():
     assert [e.title for e in got] == ["あり"]
 
 
+def test_タイムゾーン無しのpublishedは飛ばす():
+    # naive な値は aware な「今」と比較した瞬間に TypeError になる。
+    # ここでタイムゾーンを勝手に補うと判定を静かにズレさせるおそれがある
+    # （実際にどのタイムゾーンだったか、この関数には分からない）ので、
+    # 補うのではなくその entry ごと飛ばす。
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><title>タイムゾーン無し</title><published>2026-08-12T22:30:16</published></entry>
+  <entry><title>あり</title><published>2026-08-12T22:30:16+00:00</published></entry>
+</feed>
+"""
+    got = parse_entries(xml)
+    assert [e.title for e in got] == ["あり"]
+
+
 def test_直近N日の本数を数える():
     entries = parse_entries(FEED)
     now = datetime(2026, 8, 13, 21, 0, tzinfo=JST)
@@ -79,6 +94,15 @@ def test_境界は含める():
     entries = [Entry(published=published, title="ちょうど7日前")]
     now = datetime(2026, 8, 13, 21, 0, tzinfo=JST)
     assert count_recent(entries, now, within_days=7) == 1
+
+
+def test_未来日付のentryは直近に含めない():
+    # 下限（within_days前）しか見ていないと、何らかの理由で未来日付の
+    # entryが混ざったとき「直近」に数えてしまい、実際にはまだ公開されて
+    # いない動画を理由に健全と判定してしまう。上限（now）も見る。
+    now = datetime(2026, 8, 13, 21, 0, tzinfo=JST)
+    future = Entry(published=now + timedelta(days=1), title="未来の投稿")
+    assert count_recent([future], now, within_days=7) == 0
 
 
 def test_最後の公開を返す():
@@ -217,3 +241,25 @@ def test_withinが0なら受け付けて必ず終了コード1になる(monkeypa
         watch_channel.main()
 
     assert exc.value.code == 1
+
+
+def test_フィードがXMLとして壊れているときは取得失敗と違うメッセージを出す(
+        monkeypatch, capsys):
+    # YouTubeがエラーページや同意画面（HTML）を返すことがある。「取得でき
+    # なかった」（ネットワーク不通など）と原因が違うので、診断メッセージも
+    # 分ける。どちらも終了コード1で落ちること自体は変えない。
+    # 実際の同意画面のように、エスケープされていない & とタグの閉じ忘れが
+    # あるHTMLは XML として不正なので ET.ParseError になる（整形式の
+    # HTMLは偶然にも valid XML になってしまい ParseError を再現できない）。
+    monkeypatch.setattr(
+        watch_channel, "fetch_feed",
+        lambda channel_id=None: "<html><body>Before you continue & consent</body>")
+    monkeypatch.setattr("sys.argv", ["watch_channel.py"])
+
+    with pytest.raises(SystemExit) as exc:
+        watch_channel.main()
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "取得できませんでした" not in err     # 取得はできている
+    assert "フィードとして読めません" in err
