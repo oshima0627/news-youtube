@@ -29,6 +29,7 @@ CLI_ENTRYPOINTS = (
     "upload_youtube.py",
     "unpublish.py",
     "run_daily.py",
+    "yield_report.py",
 )
 
 
