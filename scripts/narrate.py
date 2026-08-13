@@ -49,7 +49,7 @@ TIMEOUT = 120
 # 弾くので、ここを長くしても気づけなくなることはない。
 SYNTHESIS_TIMEOUT = 600
 
-# ショート動画の尺の許容範囲。script_writer.py の narration（350〜400字）を
+# ショート動画の尺の許容範囲。script_writer.py の narration（330〜355字）を
 # 素直に読み上げると文字数や句読点の量でこの範囲を外れることがあるため、
 # synthesize() は実測してから speedScale を補正する（下記参照）。
 TARGET_MIN = 56.0
