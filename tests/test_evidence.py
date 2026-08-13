@@ -1,6 +1,13 @@
 import pytest
 
-from scripts.evidence import Evidence, EvidenceSourcesUnavailable, collect, is_admissible
+from scripts.evidence import (
+    QUOTE_EXCERPT_MAX_CHARS,
+    Evidence,
+    EvidenceSourcesUnavailable,
+    collect,
+    ground_excerpt,
+    is_admissible,
+)
 
 
 def _ev(**kw) -> Evidence:
@@ -9,6 +16,36 @@ def _ev(**kw) -> Evidence:
                 context="第217回国会 予算委員会 2025-11-20")
     base.update(kw)
     return Evidence(**base)
+
+
+QUOTE = "我が国の在留外国人数は、令和七年末時点で過去最多の約四百十三万人となっております。"
+
+
+def test_逐語引用の部分文字列ならそのまま通す():
+    assert ground_excerpt("過去最多の約四百十三万人", QUOTE) == "過去最多の約四百十三万人"
+
+
+def test_一次資料に無い文言は逐語引用の先頭に差し替える():
+    # 画面のカードには一次資料の出典（会議名・日付・発言者）が必ず印字される。
+    # モデルが作った文字列にその出典が付くと、「一次資料が取れなければ
+    # 公開しない」という設計方針がそこだけ破れる。
+    assert ground_excerpt("在留外国人は増え続けている", QUOTE) \
+        == QUOTE[:QUOTE_EXCERPT_MAX_CHARS]
+
+
+def test_空の文言も差し替える():
+    assert ground_excerpt("", QUOTE) == QUOTE[:QUOTE_EXCERPT_MAX_CHARS]
+
+
+def test_前後の空白は落として判定する():
+    assert ground_excerpt("  過去最多の約四百十三万人  ", QUOTE) \
+        == "過去最多の約四百十三万人"
+
+
+def test_逐語引用が無ければ差し替えようがないので空を返す():
+    # 数値系統（figure）のときはこの関数を通さないが、呼ばれたときに
+    # 一次資料に無い文字列をそのまま通すことだけは避ける。
+    assert ground_excerpt("なんらかの文言", "") == ""
 
 
 def test_逐語引用と出典があれば採用する():

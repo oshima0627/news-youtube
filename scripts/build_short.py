@@ -35,6 +35,7 @@ from scripts.cards import (CARD_TOP, PHOTO_H, PHOTO_TOP, SHORT_SIZE,  # noqa: E4
                            render_quote, render_telop)
 from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
                              segments_path, wav_duration_seconds)
+from scripts.evidence import ground_excerpt  # noqa: E402
 from scripts.telop import spans as telop_spans  # noqa: E402
 from scripts.telop import stretch  # noqa: E402
 
@@ -70,12 +71,17 @@ def _fill(img: Image.Image, size: tuple[int, int],
 
 
 def compose_base(photo: Path, script: dict, source: str,
-                 figure: str = "") -> Image.Image:
+                 figure: str = "", *, quote: str) -> Image.Image:
     """見出し＋実写＋根拠カードを焼いた土台。テロップの帯だけ空けておく。
 
     テロップは1本の動画で20枚前後に切り替わる。毎回ここからやり直すと
     写真の拡大縮小を20回繰り返すことになるので、変わらない部分を先に
     1枚作っておき、テロップの帯だけを差し替える。
+
+    `quote`（一次資料の逐語引用）は必須にしてある。引用カードに出す文字列が
+    一次資料に由来することを、**描く直前に**確かめるため（ground_excerpt）。
+    省略できるようにしておくと、run_daily を通らない経路
+    （write_script.py → build_short.py を手で叩く）が検証なしで描けてしまう。
     """
     w, _ = SHORT_SIZE
     stage = Image.new("RGB", SHORT_SIZE, NAVY)
@@ -86,7 +92,8 @@ def compose_base(photo: Path, script: dict, source: str,
 
     card = (render_figure(script["figure_label"], script["figure_value"], source)
             if figure.strip()
-            else render_quote(script["quote_excerpt"], source))
+            else render_quote(ground_excerpt(script["quote_excerpt"], quote),
+                              source))
     stage.paste(card, (0, CARD_TOP))
     return stage
 
@@ -99,7 +106,7 @@ def compose_over(base: Image.Image, caption: str) -> Image.Image:
 
 
 def compose_stage(photo: Path, script: dict, source: str,
-                  figure: str = "") -> Image.Image:
+                  figure: str = "", *, quote: str) -> Image.Image:
     """実写＋根拠カード＋上下の帯を1枚に焼く。
 
     figure は一次資料が持っている実際の数値（`Evidence.figure`）。
@@ -112,7 +119,7 @@ def compose_stage(photo: Path, script: dict, source: str,
     渡すと4行＝60文字あまりしか描画されず、残り全部が毎ビルド切り捨て警告に
     なるうえ、画面には文の途中で切れた冒頭だけが60秒間出続ける。
     """
-    base = compose_base(photo, script, source, figure)
+    base = compose_base(photo, script, source, figure, quote=quote)
     return compose_over(base, script["subtitle"])
 
 
@@ -229,7 +236,8 @@ def build(workdir: Path) -> Path:
     # 役割が重複するため外した。
     voice_duration = wav_duration_seconds(voice_path)
 
-    base = compose_base(workdir / "photo.jpg", script, source, figure)
+    base = compose_base(workdir / "photo.jpg", script, source, figure,
+                        quote=recipe["evidence"].get("quote") or "")
     frames = plan_frames(workdir, script, voice_duration)
     concat_path = write_frames(workdir, base, frames)
 
