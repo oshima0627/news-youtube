@@ -52,6 +52,14 @@ python scripts/run_daily.py
 python scripts/run_daily.py --days-ahead 1
 ```
 
+**すでに予約が入っている枠には作らない。** `state/published.json` の
+`publish_at` を見て、埋まっている枠は対象から外す（`run_daily.taken_slots`）。
+先の日付ぶんを `--days-ahead` で作り置きしても、その日が来たときの実行が
+同じ枠に2本目を載せることはない。全部埋まっていれば「空いている枠が
+ありません（すべて予約済み）」と出して何もせずに終わる（0本続きの警告には
+数えない）。`unpublish.py` で戻した動画は `publish_at` を記録から落とすので、
+その枠は空いたものとして再び使われる。
+
 **1枠ぶんだけ作り直すときは `--limit` を付ける。** 予約済みの動画を
 `unpublish.py` で戻して差し替える場合など、その日の残り枠が2つあっても
 1本しか作りたくないことがある。`--days-ahead` だけだと残り全部を作って

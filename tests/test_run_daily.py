@@ -157,7 +157,24 @@ def _setup_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(run_daily, "SEEN", state / "seen.json")
     monkeypatch.setattr(run_daily, "USED", state / "used.json")
     monkeypatch.setattr(run_daily, "STREAK", state / "empty_streak.json")
+    monkeypatch.setattr(run_daily, "PUBLISHED", state / "published.json")
     return work, recipes, state
+
+
+def _write_published(state: Path, publish_ats: list[str]) -> None:
+    """state/published.json に予約済みの記録を書く（枠の二重予約の検証用）。"""
+    videos = {
+        f"already{i}": {
+            "youtube_video_id": f"vid{i}",
+            "url": f"https://www.youtube.com/watch?v=vid{i}",
+            "title": "予約済みの動画",
+            "privacy_status": "private",
+            "publish_at": at,
+        }
+        for i, at in enumerate(publish_ats)
+    }
+    (state / "published.json").write_text(
+        json.dumps({"videos": videos}, ensure_ascii=False), encoding="utf-8")
 
 
 def _write_candidates(candidates: list[dict], work: Path) -> None:
@@ -244,6 +261,79 @@ def test_複数候補があっても枠の数までしか作らない(tmp_path, 
 
     seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
     assert seen == ["a"]           # b には手を付けない
+
+
+def test_すでに予約が入っている枠は埋めない(tmp_path, monkeypatch, capsys):
+    """同じ時刻に2本並べない。
+
+    枠は「まだ来ていない時刻」だけで決まっていて、その枠がすでに埋まって
+    いるかを見ていなかった。先の日付ぶんを作り置きした翌日に実行すると、
+    同じ枠にもう1本アップロードしてしまう（upload_youtube.py に重複防止は
+    無い）。実際、8/14・8/15 の4枠を先に埋めた状態で、翌朝の定例実行が
+    そのまま二重予約になる状態だった。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING, SLOT_EVENING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    _write_published(state, [SLOT_MORNING.isoformat()])
+
+    cands = [_candidate("a"), _candidate("b")]
+    _write_candidates(cands, work)
+    for c in cands:
+        _prepare_photo(work / c["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "本日 1/1 本" in out
+    scheduled = fake_run.schedule_calls()
+    assert len(scheduled) == 1
+    # 空いている夕方の枠だけを埋める
+    assert SLOT_EVENING.isoformat() in scheduled[0]
+    assert SLOT_MORNING.isoformat() not in " ".join(scheduled[0])
+
+
+def test_全部の枠が予約済みなら何も作らない(tmp_path, monkeypatch, capsys):
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING, SLOT_EVENING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    _write_published(state, [SLOT_MORNING.isoformat(), SLOT_EVENING.isoformat()])
+
+    def _boom(cmd, **kwargs):
+        raise AssertionError("空き枠が無いのに subprocess.run を呼んでいる")
+
+    monkeypatch.setattr(run_daily.subprocess, "run", _boom)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "予約済み" in out
+    # 「題材が無かった日」ではないので、0本続きの警告には数えない
+    assert not (state / "empty_streak.json").exists()
+
+
+def test_published_jsonが壊れていたら中止する(tmp_path, monkeypatch, capsys):
+    """どの枠が埋まっているか分からないまま進めない。
+
+    黙って「予約済みは無い」と見なして進むと、埋まっている枠にもう1本
+    載せてしまう。重複投稿を防ぐための情報なので、読めないなら止める。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    (state / "published.json").write_text("{壊れている", encoding="utf-8")
+
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    with pytest.raises(SystemExit):
+        run_daily.main()
 
 
 def test_limitで先頭の枠だけ埋める(tmp_path, monkeypatch, capsys):
