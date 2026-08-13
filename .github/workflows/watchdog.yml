@@ -1,0 +1,23 @@
+# チャンネルへの投稿が途切れていないかを毎日見る。
+#
+# 失敗すると GitHub がリポジトリ所有者にメールを送るので、通知の仕組みを
+# 自前で持たない。見るのは公開RSSだけなので Secrets は一切要らない。
+name: watchdog
+
+on:
+  schedule:
+    # 12:00 UTC = 21:00 JST。その日の最後の投稿枠（18:30 JST）が過ぎたあとに
+    # 見るので、当日ぶんの結果を当日のうちに判定できる。
+    - cron: "0 12 * * *"
+  workflow_dispatch:        # 手で叩いて確かめられるようにする
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # pip install はしない。watch_channel.py は標準ライブラリだけで動く。
+      - run: python scripts/watch_channel.py --within 7
