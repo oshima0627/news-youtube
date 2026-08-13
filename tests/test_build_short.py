@@ -92,10 +92,31 @@ def test_figureがあれば数値カードを使う(tmp_path, monkeypatch):
     assert calls == [("figure", "照射回数", "1回", "e-Stat")]
 
 
+def test_数量でないfigureは数値カードに使わない(tmp_path, monkeypatch):
+    """採用ゲートと同じ基準（evidence.has_figure）でカードを出し分ける。
+
+    「空でなければ数値カード」にしていると、統計表のメタデータ（"2024年度"
+    など）が figure に入ったとき、モデルが作った figure_value に一次資料の
+    出典キャプションが付く。採用ゲート is_admissible は _FIGURE_RE で
+    弾いているので、そこだけ緩いと食い違う（docs/known-issues.md の問題3）。
+    """
+    calls = []
+    monkeypatch.setattr(build_short, "render_quote",
+                        lambda text, source: (calls.append(("quote", text)),
+                                              Image.new("RGB", (1080, 341)))[1])
+    monkeypatch.setattr(build_short, "render_figure",
+                        lambda *a: pytest.fail("数量でないのに数値カードを使っている"))
+
+    compose_stage(_photo(tmp_path), SCRIPT, source="e-Stat", figure="2024年度",
+                  quote=NARRATION)
+
+    assert calls == [("quote", "攻撃の一歩手前")]
+
+
 # --- C2: 字幕バンドにはナレーション全文を渡さない --------------------------
 
 def test_テロップ帯にはsubtitleを渡しナレーション全文は渡さない(tmp_path, monkeypatch):
-    # テロップの帯は3行しか描画しない。ナレーション全文（350〜400字）を
+    # テロップの帯は3行しか描画しない。ナレーション全文（330〜355字）を
     # 渡すと毎ビルド必ず切り捨て警告が出るうえ、画面には文の途中で切れた
     # 冒頭だけが出続ける。同期テロップが作れなかったときの控えの経路。
     from scripts.cards import TELOP_H

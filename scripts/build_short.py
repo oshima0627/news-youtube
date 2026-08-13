@@ -35,7 +35,7 @@ from scripts.cards import (CARD_TOP, PHOTO_H, PHOTO_TOP, SHORT_SIZE,  # noqa: E4
                            render_quote, render_telop)
 from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
                              segments_path, wav_duration_seconds)
-from scripts.evidence import ground_excerpt  # noqa: E402
+from scripts.evidence import ground_excerpt, has_figure  # noqa: E402
 from scripts.telop import spans as telop_spans  # noqa: E402
 from scripts.telop import stretch  # noqa: E402
 
@@ -91,7 +91,7 @@ def compose_base(photo: Path, script: dict, source: str,
         stage.paste(_fill(im.convert("RGB"), (w, PHOTO_H)), (0, PHOTO_TOP))
 
     card = (render_figure(script["figure_label"], script["figure_value"], source)
-            if figure.strip()
+            if has_figure(figure)
             else render_quote(ground_excerpt(script["quote_excerpt"], quote),
                               source))
     stage.paste(card, (0, CARD_TOP))
@@ -110,12 +110,16 @@ def compose_stage(photo: Path, script: dict, source: str,
     """実写＋根拠カード＋上下の帯を1枚に焼く。
 
     figure は一次資料が持っている実際の数値（`Evidence.figure`）。
-    これが空でない系統（統計・公表）では数値カードを使い、空の系統（発言）では
-    引用カードを使う。カードには必ず一次資料の出典キャプションが付くので、
-    figure が空なのに数値カードを使うと、モデルが作った値に一次資料の出典が
-    付いてしまう（設計方針「一次資料が取れなければ公開しない」の破れ）。
+    これが**数量を含む**系統（統計・公表）では数値カードを使い、そうでない
+    系統（発言）では引用カードを使う。カードには必ず一次資料の出典キャプションが
+    付くので、数量が無いのに数値カードを使うと、モデルが作った値に一次資料の
+    出典が付いてしまう（設計方針「一次資料が取れなければ公開しない」の破れ）。
 
-    字幕バンドに渡すのは script["subtitle"]。ナレーション全文（350〜400字）を
+    判定は採用ゲートと同じ `evidence.has_figure`。「空でないか」で見ていた
+    ときは、`figure="2024年度"` のような非数量文字列で採用は引用側で通るのに
+    カードだけ数値側に落ちた（docs/known-issues.md の問題3）。
+
+    字幕バンドに渡すのは script["subtitle"]。ナレーション全文（330〜355字）を
     渡すと4行＝60文字あまりしか描画されず、残り全部が毎ビルド切り捨て警告に
     なるうえ、画面には文の途中で切れた冒頭だけが60秒間出続ける。
     """

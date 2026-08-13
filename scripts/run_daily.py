@@ -59,6 +59,7 @@ from scripts.evidence import (  # noqa: E402
     build_recipe,
     collect,
     ground_excerpt,
+    has_figure,
 )
 from scripts.narrate import synthesize  # noqa: E402
 from scripts.photos import download as download_photo  # noqa: E402
@@ -205,7 +206,7 @@ def ensure_grounded_card(script, evidence: dict):
 
     戻り値は検証済みの Script（差し替えが起きた場合は新しいインスタンス）。
     """
-    if (evidence.get("figure") or "").strip():
+    if has_figure(evidence.get("figure") or ""):
         return script
 
     excerpt = (script.quote_excerpt or "").strip()

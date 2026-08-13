@@ -42,7 +42,12 @@ def test_python_scriptsXpy形式でhelpが起動できる(script: str) -> None:
         # 明示しないと Windows では cp932 でデコードされ、失敗時の stderr
         # （日本語）が読めないうえ EncodingWarning が出る。
         encoding="utf-8",
-        timeout=30,
+        # 見ているのは sys.path の下準備であって速度ではない。それでも
+        # 上限が要るのは、失敗したCLIが入力待ちで止まるとテストが終わらない
+        # ため。30秒では足りない: `write_script.py --help` の実測が27.8秒で、
+        # うち **20.3秒が anthropic SDK の import**（python -X importtime で
+        # 確認）。上限すれすれのまま置くと、負荷のゆらぎで無関係の失敗が出る。
+        timeout=180,
     )
     assert proc.returncode == 0, (
         f"scripts/{script} が python scripts/{script} 形式で起動できません。"

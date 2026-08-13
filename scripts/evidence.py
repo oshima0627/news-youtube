@@ -64,6 +64,24 @@ def _is_primary_host(url: str) -> bool:
     return host.endswith(EVIDENCE_HOST_SUFFIX)
 
 
+def has_figure(figure: str) -> bool:
+    """その文字列を数値カードに出してよいか（＝実際に数量を含むか）。
+
+    採用ゲート（is_admissible）とカードの出し分け（build_short.compose_base /
+    run_daily.ensure_grounded_card）で**同じ基準を使う**ための共有ヘルパ。
+
+    もとは採用が `_FIGURE_RE.search()`、出し分けが `figure.strip()` と
+    2種類あった。すると `figure="2024年度"` のような非数量文字列のとき、
+    採用は quote 側の根拠で通るのに、カードは数値側に落ちる。数値カードに
+    出るのはモデルが作った `figure_value` なので、**モデル生成値に一次資料の
+    出典キャプションが付く**（引用カード側で塞いだのと同型の穴）。
+
+    現状 `figure` は常に空なので到達しないが、e-Stat 統計系統を戻したときに
+    効いてくる。戻すときに気づける保証が無いので先に揃えてある。
+    """
+    return bool(_FIGURE_RE.search(figure or ""))
+
+
 # 引用カードに出す一節の長さ。逐語引用から機械的に抜き出すときの上限。
 QUOTE_EXCERPT_MAX_CHARS = 25
 
@@ -93,8 +111,7 @@ def is_admissible(ev: Evidence) -> bool:
     if not ev.source_url or not _is_primary_host(ev.source_url):
         return False
     has_quote = len(ev.quote.strip()) >= MIN_QUOTE_CHARS
-    has_figure = bool(_FIGURE_RE.search(ev.figure))
-    return has_quote or has_figure
+    return has_quote or has_figure(ev.figure)
 
 
 def build_recipe(candidate: dict, ev: Evidence) -> dict:

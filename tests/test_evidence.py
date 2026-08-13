@@ -6,6 +6,7 @@ from scripts.evidence import (
     EvidenceSourcesUnavailable,
     collect,
     ground_excerpt,
+    has_figure,
     is_admissible,
 )
 
@@ -16,6 +17,29 @@ def _ev(**kw) -> Evidence:
                 context="第217回国会 予算委員会 2025-11-20")
     base.update(kw)
     return Evidence(**base)
+
+
+def test_数量なら数値カードを使ってよい():
+    assert has_figure("4.3兆円") is True
+    assert has_figure("30%減") is True
+
+
+def test_数量でない文字列は数値カードに使わない():
+    # 統計表のメタデータ（調査年度など）が figure に入ることがある。
+    # 「空でなければ数値カード」にしていると、モデルが作った figure_value に
+    # 一次資料の出典キャプションが付く（採用ゲート is_admissible は
+    # _FIGURE_RE で弾いているのに、カードの出し分けだけ緩かった）。
+    assert has_figure("2024年度") is False
+    assert has_figure("") is False
+    assert has_figure("   ") is False
+
+
+def test_採用ゲートとカードの出し分けが同じ基準を使う():
+    # 基準が2つあると、採用は quote 側で通ったのにカードは数値側に落ちる、
+    # という食い違いが起きる。同じ関数を通していることを押さえる。
+    for value in ("4.3兆円", "2024年度", "", "令和七年"):
+        assert has_figure(value) is bool(is_admissible(
+            _ev(quote="", figure=value)))
 
 
 QUOTE = "我が国の在留外国人数は、令和七年末時点で過去最多の約四百十三万人となっております。"
