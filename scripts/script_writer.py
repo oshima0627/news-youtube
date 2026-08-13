@@ -8,8 +8,17 @@
 
 from __future__ import annotations
 
-from anthropic import Anthropic, AuthenticationError
 from pydantic import BaseModel, Field
+
+# anthropic SDK は**必要になってから**読み込む。import に実測20.3秒かかり
+# （`python -X importtime` で確認）、run_daily.py はモジュール先頭で
+# script_writer を import するため、台本生成に到達しない日— 枠が全部
+# 埋まっていて何もせず終わる日— でもこの20秒を払っていた。
+#
+# 遅延させても失敗の型は変えない（_load_sdk 参照）。tests はここを
+# 差し替えるので、モジュール属性として持たせておく必要がある。
+Anthropic = None
+AuthenticationError: type[BaseException] | tuple = ()   # 読み込み前は決して一致しない
 
 MODEL = "claude-opus-5"
 MAX_TOKENS = 16000
@@ -129,7 +138,36 @@ def build_prompt(recipe: dict) -> str:
     return "\n".join(parts)
 
 
+def _IMPORT_SDK():
+    """anthropic から必要な名前を取り出す。差し替え点を1箇所にするための薄い関数。"""
+    from anthropic import Anthropic as _Anthropic
+    from anthropic import AuthenticationError as _AuthenticationError
+    return _Anthropic, _AuthenticationError
+
+
+def _load_sdk() -> None:
+    """anthropic SDK を必要になってから読み込む。
+
+    読み込めないときは **ScriptWriterUnavailable にして送出する。**
+    素の ImportError のまま出すと、run_daily.py の「ScriptWriterUnavailable
+    なら日次実行を即座に中止」の分岐に乗らず、題材固有の失敗とも区別されない
+    まま素のスタックトレースが出るだけになる。遅延 import にしたせいで
+    失敗の型が変わってはいけない。
+    """
+    global Anthropic, AuthenticationError
+    if Anthropic is not None:
+        return
+    try:
+        Anthropic, AuthenticationError = _IMPORT_SDK()
+    except ImportError as e:
+        raise ScriptWriterUnavailable(
+            "anthropic SDK を読み込めませんでした。"
+            "`pip install -r requirements.txt` で導入してください"
+            f"（元のエラー: {e}）") from e
+
+
 def write(recipe: dict) -> Script:
+    _load_sdk()
     try:
         client = Anthropic()
         response = client.messages.parse(
