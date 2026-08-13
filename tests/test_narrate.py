@@ -135,6 +135,56 @@ def test_合成は長い方のタイムアウトで呼ぶ(monkeypatch, tmp_path)
     assert timeouts["synthesis"] == narrate.SYNTHESIS_TIMEOUT
 
 
+def test_1回目のspeedScaleを字数から見積もる(monkeypatch, tmp_path):
+    """最初の合成から尺の許容範囲に入れる。
+
+    speedScale=1.0 で決め打ちしていたため、台本が長いと必ず範囲外になり
+    2回目の合成に入っていた。本番尺の合成は1回2分近くかかるので、
+    これがそのまま実行時間の倍増になる。
+
+    台本の字数指定を締めても解決しない。実測では、指定を330〜355字に
+    直した後も**2本中1本が378字**で返り、63.34秒＝範囲外だった。
+    モデルは字数を必ずしも守らないので、こちら側で見積もる。
+    """
+    speeds = []
+
+    def _fake_once(text, sid, speed, dest):
+        speeds.append(speed)
+        return narrate.TARGET_MID          # 1回で収まったことにする
+
+    monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
+    monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    monkeypatch.setattr(narrate, "_synthesize_once", _fake_once)
+    monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
+
+    text = "あ" * 400
+    narrate.synthesize(text, tmp_path / "voice.wav")
+
+    assert len(speeds) == 1, "1回で収まるはずが再合成している"
+    expected = 400 * narrate.SECONDS_PER_CHAR / narrate.TARGET_MID
+    assert speeds[0] == pytest.approx(expected, abs=0.001)
+
+
+def test_見積もったspeedScaleは可動域に収める(monkeypatch, tmp_path):
+    """極端に短い／長い台本でも聞き取れる速度に留める。"""
+    speeds = []
+
+    def _fake_once(text, sid, speed, dest):
+        speeds.append(speed)
+        return narrate.TARGET_MID
+
+    monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
+    monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    monkeypatch.setattr(narrate, "_synthesize_once", _fake_once)
+    monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
+
+    narrate.synthesize("あ" * 2000, tmp_path / "long.wav")
+    assert speeds[-1] == narrate.SPEED_MAX
+
+    narrate.synthesize("あ", tmp_path / "short.wav")
+    assert speeds[-1] == narrate.SPEED_MIN
+
+
 def test_ensure_engine_応答済みなら何もせず即returnする(monkeypatch):
     class _OKResponse:
         def raise_for_status(self):

@@ -8,6 +8,8 @@ work/
 *.mp4
 *.wav
 
+run_daily.log
+
 __pycache__/
 *.pyc
 .venv/
