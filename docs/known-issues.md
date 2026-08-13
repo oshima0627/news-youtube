@@ -211,7 +211,17 @@
 
 ### P2 — 稼働後
 
-7. VOICEVOX を落とした状態から `narrate.ensure_engine()` の自動起動
-   （`C:\Users\oshim\voicevox_engine\windows-cpu\run.exe`）が実際に効くか。
-   パスは実測済みだが Popen からの起動は未検証。
+7. ~~VOICEVOX を落とした状態から `narrate.ensure_engine()` の自動起動が
+   実際に効くか。~~ **2026-08-13 に完了。** エンジンを止めた状態から
+   `ensure_engine()` を呼び、候補パス1番目
+   （`C:\Users\oshim\voicevox_engine\windows-cpu\run.exe`）で
+   **5.1秒**で起動して `/version` が 200 を返した（version 0.25.2）。
+   起動したエンジンは親のPythonが終了しても残る。
+
+   **ただしエンジンの出力は親のコンソールにそのまま流れる。** `Popen` に
+   リダイレクトを渡していないため、起動時のユーザー辞書構築の進捗バー
+   （`emitting double-array: 1% |...`）が数十行ぶん出る。タスク
+   スケジューラで出力をファイルに落とす運用（P1-5）では、この進捗バーが
+   ログの大半を占めるので、読むときは `run_daily.py` 自身が出す
+   「- 」「✓ 」「! 」「✗ 」で始まる行だけを見ること。
 8. 連続0本の3日警告が、90日3本の要件に対して十分早いか。
