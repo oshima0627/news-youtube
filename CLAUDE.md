@@ -41,6 +41,7 @@ pytest                                        # 全テスト
 python scripts/run_daily.py --dry-run         # 投稿せず1周（ネットワークとVOICEVOXは使う）
 python scripts/run_daily.py --limit 1         # 1本だけ作って予約投稿
 python scripts/yield_report.py                # 採用ゲートの歩留まりを見る
+python scripts/relevance_eval.py              # 見出しと引用の関連性を独立に採点（要API認証）
 python scripts/unpublish.py <video_id>        # 公開後の事故を即座に戻す
 python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
 ```
@@ -57,7 +58,21 @@ python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
   予約が外れたと判断する前に必ず引き直すか YouTube Studio を見る。
   **理由**: ここで `unpublish.py` → 作り直しに走ると、無事な動画を1本捨てる。
 
-## 未解決
+## 未解決：採用ゲートは関連性を判定していない
 
-`docs/known-issues.md` 5番（番組宣伝の見出しが題材として残る）だけが open。
-一次資料は本物なので**採用ゲートでは止まらない**種類の失敗。実例が数件たまるまで保留。
+採用ゲート（`evidence.find_passage`）が見ているのは「**検索語が同じ文脈に2語以上固まって
+現れるか**」だけで、**引用が見出しの出来事を裏付けているか**は判定していない。
+`docs/known-issues.md` 5番（番組宣伝）は、この凹みが表に出た1例にすぎない。
+
+`recipes/` 全11件の実測（[`evals/relevance-baseline-2026-08-13.md`](evals/relevance-baseline-2026-08-13.md)）:
+**ゲート通過 11/11 に対し、独立評価で5点は 4/11。** 時点が2年ずれた題材、
+検索語が別の話題（少子化対策の「加速化プラン」）に一致した題材が通っている。
+
+- 採点基準: [`specs/evaluation-rubric.md`](specs/evaluation-rubric.md)
+- 採点CLI: `python scripts/relevance_eval.py`（合格ラインを外すと終了コード1）
+
+**ゲート・`keywords.POLICY`・`sources.PLUS`/`MINUS` を触ったら、このCLIを走らせて
+5点の件数がベースライン（4/11）から増えたかで採否を決める。**
+
+独立評価者を本番パイプラインの関門として組み込むかは**未決**。
+現状は診断専用で、`run_daily.py` からは呼んでいない。
