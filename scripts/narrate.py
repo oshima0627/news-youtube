@@ -66,20 +66,16 @@ MAX_RETRIES = 2
 
 # 読み上げ1字あたりの秒数（speedScale=1.0）。実測（2026-08-13、青山龍星
 # ノーマル、本番の台本6本）で 0.165〜0.181、平均 0.171。
-# 1回目の speedScale をここから見積もる。決め打ちの 1.0 で始めると、
-# 台本が長いだけで必ず範囲外になり2回目の合成に入っていた
-# （本番尺の合成は1回2分近くかかるので、そのまま実行時間の倍増になる）。
-# 台本側の字数指定（script_writer.NARRATION_MIN/MAX_CHARS）を締めても
-# 解決しない。実測では締めた後も2本中1本が378字で返っている。
+#
+# **尺合わせには使わない。** 本文ごとに ±6% 動くのに対し、狙う窓は
+# 58.5±2.5秒＝±4.3% とそれより狭く、字数からの推定では窓に入りきらない
+# （実際、推定に切り替えた後も2本中1本が55.41秒で下振れした）。尺は
+# query_duration() が audio_query から計算する。
+#
+# この値は台本に頼む字数（script_writer.NARRATION_MIN/MAX_CHARS）を
+# 決めるためだけに残してある。速度補正が可動域に張り付かない長さの本文を
+# 書いてもらうための目安で、tests/test_script_writer.py が両者を縛っている。
 SECONDS_PER_CHAR = 0.171
-
-
-def estimate_speed(text: str) -> float:
-    """その本文を目標の尺で読み切るための speedScale。可動域に収める。"""
-    if not text:
-        return 1.0
-    return max(SPEED_MIN,
-               min(SPEED_MAX, len(text) * SECONDS_PER_CHAR / TARGET_MID))
 
 # この環境の VOICEVOX エンジンは GUI アプリではなく、エンジン単体の実行ファイル
 # (run.exe) として配布・起動されている。配布形態によってインストール先が
@@ -192,7 +188,51 @@ def measure_segments(text: str, sid: int) -> list[dict]:
             for seg in split_segments(text)]
 
 
-def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> float:
+def fetch_query(text: str, sid: int) -> dict:
+    """読み方（audio_query）を引く。合成より桁違いに速い（実測1秒未満）。"""
+    r = requests.post(f"{ENGINE}/audio_query", timeout=TIMEOUT,
+                      params={"text": text, "speaker": sid})
+    r.raise_for_status()
+    return r.json()
+
+
+def query_duration(query: dict) -> float:
+    """その audio_query で合成したときの尺（秒）。**合成せずに分かる。**
+
+    audio_query はモーラごとの子音長・母音長と句間の間（pause_mora）、
+    前後の無音（prePhonemeLength / postPhonemeLength）を持っている。
+    合計を speedScale で割ったものが実尺になる。
+
+    既存11本で実際の wav と突き合わせて誤差は最大0.17秒だった
+    （テストの fixture ではなく本番の voice_query.json と voice.wav）。
+
+    字数からの推定（SECONDS_PER_CHAR）ではここまで当たらない。読み方の
+    速さは本文によって ±6% ほど動くのに対し、狙う窓は 58.5±2.5秒＝±4.3% と
+    それより狭い。実際、推定に切り替えた後も2本中1本が窓を外した
+    （55.41秒＝下振れ）。推定をやめて実際の読み方から計算する。
+    """
+    speed = query.get("speedScale") or 1.0
+    total = ((query.get("prePhonemeLength") or 0)
+             + (query.get("postPhonemeLength") or 0))
+    for phrase in query.get("accent_phrases") or []:
+        for mora in phrase.get("moras") or []:
+            total += ((mora.get("consonant_length") or 0)
+                      + (mora.get("vowel_length") or 0))
+        pause = phrase.get("pause_mora")
+        if pause:
+            total += pause.get("vowel_length") or 0
+    return total / speed
+
+
+def fit_speed(query: dict) -> float:
+    """尺を目標中央値(58.5秒)に合わせる speedScale。可動域に収める。"""
+    base = query_duration(query)
+    if base <= 0:
+        return 1.0
+    return max(SPEED_MIN, min(SPEED_MAX, base / TARGET_MID))
+
+
+def _synthesize_once(query: dict, sid: int, speed_scale: float, dest: Path) -> float:
     """speed_scale で1回合成して dest に書き、実尺（秒）を返す。
 
     合成に使った audio_query も隣に残す。この中のモーラごとの子音長・母音長が
@@ -200,10 +240,7 @@ def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> flo
     （scripts/telop.py）はこれを読む。音声認識も強制アライメントも要らない。
     採用された speedScale の分だけ残るよう、再合成のたびに上書きする。
     """
-    q = requests.post(f"{ENGINE}/audio_query", timeout=TIMEOUT,
-                      params={"text": text, "speaker": sid})
-    q.raise_for_status()
-    query = q.json()
+    query = dict(query)
     query["speedScale"] = speed_scale
 
     s = requests.post(f"{ENGINE}/synthesis", timeout=SYNTHESIS_TIMEOUT,
@@ -223,12 +260,12 @@ def synthesize(text: str, dest: Path) -> Path:
     投稿されると、ensure_engine() が防いでいる「無音動画を無自覚に
     投稿する」のと同じ構造の失敗になる。そのため:
 
-      1. まず字数から見積もった speedScale（estimate_speed）で合成し、
-         実尺を wav_duration_seconds() で測る。見積もりに使う秒/字は実測値
-         なので、たいていはこの1回で範囲に入る。
-      2. 範囲外なら「実尺 ÷ 目標中央値(58.5秒)」の比で speedScale を
-         補正し、最大 MAX_RETRIES 回まで再合成する。見積もりが外れる
-         題材（読み方の癖・記号の多い本文）に対する安全網として残す。
+      1. 読み方（audio_query）を1回引き、そこから**合成せずに**尺を計算して
+         （query_duration）speedScale を決める。誤差は実測で最大0.17秒なので、
+         この1回で必ず範囲に入る。
+      2. それでも範囲外なら「実尺 ÷ 目標中央値(58.5秒)」の比で speedScale を
+         補正し、最大 MAX_RETRIES 回まで再合成する。エンジンの仕様変更などで
+         計算が合わなくなったときの安全網として残す（通常は発火しない）。
       3. それでも収まらない場合は例外にせず最後の結果を採用する。
          このチャンネルの収益化条件は「90日で3本以上の投稿」なので、
          数秒尺がずれた動画を出すより1本を落とすほうが損失が大きい。
@@ -237,10 +274,11 @@ def synthesize(text: str, dest: Path) -> Path:
     ensure_engine()
     sid = _speaker_id()
 
-    speed = estimate_speed(text)
+    query = fetch_query(text, sid)
+    speed = fit_speed(query)
     duration = 0.0
     for attempt in range(1, MAX_RETRIES + 2):  # 初回 + 最大 MAX_RETRIES 回の再試行
-        duration = _synthesize_once(text, sid, speed, dest)
+        duration = _synthesize_once(query, sid, speed, dest)
         in_range = TARGET_MIN <= duration <= TARGET_MAX
         print(f"- 試行{attempt}: speedScale={speed:.3f} → 実尺{duration:.2f}秒"
               f"{'（許容範囲内）' if in_range else ''}")

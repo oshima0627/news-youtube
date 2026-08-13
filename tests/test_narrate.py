@@ -97,7 +97,7 @@ def test_合成のタイムアウトは本番尺の音声を作りきれる長�
     assert narrate.SYNTHESIS_TIMEOUT >= narrate.TARGET_MAX * 4
 
 
-def test_合成は長い方のタイムアウトで呼ぶ(monkeypatch, tmp_path):
+def test_読み方の取得と合成でタイムアウトを使い分ける(monkeypatch, tmp_path):
     """audio_query は短い TIMEOUT、/synthesis は SYNTHESIS_TIMEOUT で呼ぶ。
 
     定数を足しただけで使い忘れると実測どおり120秒で切れるので、
@@ -128,61 +128,100 @@ def test_合成は長い方のタイムアウトで呼ぶ(monkeypatch, tmp_path)
 
     monkeypatch.setattr(narrate.requests, "post", _fake_post)
 
-    narrate._synthesize_once("こんにちは", 13, 1.0, tmp_path / "voice.wav")
+    query = narrate.fetch_query("こんにちは", 13)
+    narrate._synthesize_once(query, 13, 1.0, tmp_path / "voice.wav")
 
     timeouts = dict((url.rsplit("/", 1)[-1], t) for url, t in calls)
     assert timeouts["audio_query"] == narrate.TIMEOUT
     assert timeouts["synthesis"] == narrate.SYNTHESIS_TIMEOUT
 
 
-def test_1回目のspeedScaleを字数から見積もる(monkeypatch, tmp_path):
-    """最初の合成から尺の許容範囲に入れる。
+def _query(moras: int, *, speed: float = 1.0, pause: float = 0.0,
+           pre: float = 0.1, post: float = 0.1) -> dict:
+    """モーラ1つ0.1秒（子音0.04＋母音0.06）の audio_query を組み立てる。"""
+    return {
+        "speedScale": speed,
+        "prePhonemeLength": pre,
+        "postPhonemeLength": post,
+        "accent_phrases": [{
+            "moras": [{"consonant_length": 0.04, "vowel_length": 0.06}
+                      for _ in range(moras)],
+            "pause_mora": ({"vowel_length": pause} if pause else None),
+        }],
+    }
 
-    speedScale=1.0 で決め打ちしていたため、台本が長いと必ず範囲外になり
-    2回目の合成に入っていた。本番尺の合成は1回2分近くかかるので、
-    これがそのまま実行時間の倍増になる。
 
-    台本の字数指定を締めても解決しない。実測では、指定を330〜355字に
-    直した後も**2本中1本が378字**で返り、63.34秒＝範囲外だった。
-    モデルは字数を必ずしも守らないので、こちら側で見積もる。
+def test_query_durationは合成せずに尺を返す():
+    """audio_query が持つ長さの合計が実尺になる（実測誤差は最大0.17秒）。"""
+    # 前後の無音0.1+0.1 + モーラ10個×0.1 + 句間の間0.3 = 1.5秒
+    assert narrate.query_duration(_query(10, pause=0.3)) == pytest.approx(1.5)
+
+
+def test_query_durationはspeedScaleで割る():
+    assert narrate.query_duration(_query(10, pause=0.3, speed=1.5)) \
+        == pytest.approx(1.0)
+
+
+def test_fit_speedは尺を目標中央値に合わせる():
+    # 目標中央値の2倍の長さなら、2倍速にすれば中央値になる
+    long = _query(int((narrate.TARGET_MID * 2 - 0.2) / 0.1))
+    assert narrate.query_duration(long) == pytest.approx(narrate.TARGET_MID * 2)
+    # 可動域に収まる範囲で（2.0 は SPEED_MAX を超えるのでクランプされる）
+    assert narrate.fit_speed(long) == narrate.SPEED_MAX
+
+
+def test_fit_speedは可動域に収める():
+    assert narrate.fit_speed(_query(1)) == narrate.SPEED_MIN
+    assert narrate.fit_speed(_query(5000)) == narrate.SPEED_MAX
+
+
+def test_合成は1回で済ませる(monkeypatch, tmp_path):
+    """読み方から尺を計算するので、再合成に入らない。
+
+    もとは speedScale=1.0 で決め打ちして実尺を測り、外れていたら
+    合成し直していた。本番尺の合成は1回2分近くかかるので、これが
+    そのまま実行時間の倍増になる。字数からの推定に変えても解決せず
+    （2本中1本が55.41秒で下振れ）、audio_query から計算する形にした。
     """
     speeds = []
+    query = _query(500)                      # 50.2秒ぶんの読み方
 
-    def _fake_once(text, sid, speed, dest):
+    def _fake_once(q, sid, speed, dest):
         speeds.append(speed)
-        return narrate.TARGET_MID          # 1回で収まったことにする
+        return narrate.query_duration(q) / speed   # 計算どおりに鳴ったとする
 
     monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
     monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    monkeypatch.setattr(narrate, "fetch_query", lambda text, sid: query)
     monkeypatch.setattr(narrate, "_synthesize_once", _fake_once)
     monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
 
-    text = "あ" * 400
-    narrate.synthesize(text, tmp_path / "voice.wav")
+    narrate.synthesize("本文", tmp_path / "voice.wav")
 
     assert len(speeds) == 1, "1回で収まるはずが再合成している"
-    expected = 400 * narrate.SECONDS_PER_CHAR / narrate.TARGET_MID
-    assert speeds[0] == pytest.approx(expected, abs=0.001)
+    assert speeds[0] == pytest.approx(
+        narrate.query_duration(query) / narrate.TARGET_MID)
 
 
-def test_見積もったspeedScaleは可動域に収める(monkeypatch, tmp_path):
-    """極端に短い／長い台本でも聞き取れる速度に留める。"""
+def test_計算が外れたら従来どおり再合成する(monkeypatch, tmp_path):
+    """安全網は残す（エンジンの仕様が変わって計算が合わなくなったとき）。"""
     speeds = []
 
-    def _fake_once(text, sid, speed, dest):
+    def _fake_once(q, sid, speed, dest):
         speeds.append(speed)
-        return narrate.TARGET_MID
+        # 計算の2倍の長さで鳴ってしまう状況
+        return narrate.query_duration(q) / speed * 2 if len(speeds) == 1 \
+            else narrate.TARGET_MID
 
     monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
     monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    monkeypatch.setattr(narrate, "fetch_query", lambda text, sid: _query(500))
     monkeypatch.setattr(narrate, "_synthesize_once", _fake_once)
     monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
 
-    narrate.synthesize("あ" * 2000, tmp_path / "long.wav")
-    assert speeds[-1] == narrate.SPEED_MAX
+    narrate.synthesize("本文", tmp_path / "voice.wav")
 
-    narrate.synthesize("あ", tmp_path / "short.wav")
-    assert speeds[-1] == narrate.SPEED_MIN
+    assert len(speeds) == 2
 
 
 def test_ensure_engine_応答済みなら何もせず即returnする(monkeypatch):
