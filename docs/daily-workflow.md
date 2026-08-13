@@ -318,5 +318,20 @@ python scripts/watch_channel.py
 **メールが来たときに見る順番:**
 
 1. `Get-Content ...\run_daily.log -Encoding UTF8 -Tail 60` — 何が失敗したか
-2. `schtasks /query /tn "news-youtube" /v /fo list` — そもそも起動しているか
+2. 3つとも登録されているか（1つでも未登録・削除されていると、その枠だけ
+   ログに何も残らないので、ログを見るだけでは気づけない）:
+   ```powershell
+   schtasks /query /tn "news-youtube" /v /fo list
+   schtasks /query /tn "news-youtube-noon" /v /fo list
+   schtasks /query /tn "news-youtube-late" /v /fo list
+   ```
 3. `python scripts/yield_report.py --refresh` — 題材が枯れていないか
+
+**「workflow was disabled due to inactivity」というメールが来たら、それ自体が
+監視の停止。** GitHub はパブリックリポジトリの scheduled workflow を、
+60日間リポジトリへの活動が無いと自動で無効化する。この機能が目指す定常状態は
+「オーナーは何も触らずに動き続ける」なので、いつか必ずこのメールが来る。
+これはノイズではなく **watchdog そのものが止まっている**状態なので、
+上記の手順を素通りしてまず GitHub の Actions タブから watchdog を
+再度有効化すること（`Actions` → `watchdog` → `Enable workflow`）。
+再有効化すれば、次回の schedule から通常どおり動く。
