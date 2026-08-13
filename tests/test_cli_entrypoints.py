@@ -30,6 +30,7 @@ CLI_ENTRYPOINTS = (
     "unpublish.py",
     "run_daily.py",
     "yield_report.py",
+    "watch_channel.py",
 )
 
 

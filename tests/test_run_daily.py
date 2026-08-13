@@ -8,6 +8,8 @@
   - 投稿が成功した題材だけ seen.json に入る（失敗は次回また拾える）
   - --dry-run のときは seen.json を更新しない
   - 0本の日が続くと state/empty_streak.json が増え、3日で警告が出る
+    （1日3回実行するようになったため「実行回数」ではなく「日」を数える。
+    日をまたいだ最初の実行で前日ぶんが確定する）
   - 1本の失敗（build/upload 等、題材固有の失敗）が当日全体を落とさない
   - 一次資料の取得元が全滅（EvidenceSourcesUnavailable）は環境不備として即座に中止する
   - 台本生成の環境不備（ScriptWriterUnavailable）は即座に中止する
@@ -815,16 +817,26 @@ def test_採用できる題材が無ければ0本のまま終了する(tmp_path,
 
     out = capsys.readouterr().out
     assert "本日 0/1 本" in out
+    # 保存されているのは「まだ確定していない当日ぶん」。前日の記録が無いので
+    # この時点では days は 0 のまま（確定は翌日の最初の実行で起きる）。
     streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
-    assert streak["days"] == 1
+    assert streak["days"] == 0
+    assert streak["made"] is False
 
 
 def test_0本が3日続くと警告が出る(tmp_path, monkeypatch, capsys):
+    # 「3日続けて0本」の確定は、その3日目が終わったことが分かる**4日目の
+    # 最初の実行**で起きる（当日の記録は翌日にならないと確定しないため）。
+    # ここでは「8/10までに2日ぶん確定していて、8/11もまだ空のまま」という
+    # 状態を作り、8/12（=4日目）の最初の実行で3日目（8/11）が畳み込まれて
+    # 3になることを確認する。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     (state / "empty_streak.json").write_text(
-        json.dumps({"days": 2}), encoding="utf-8")
+        json.dumps({"days": 2, "date": "2026-08-11", "made": False}),
+        encoding="utf-8")
     slots = [SLOT_MORNING]
     monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, datetime(2026, 8, 12, 6, 0, tzinfo=JST))
 
     # 候補は取れているが根拠が無かった日（＝正常系の0本）。候補0件は
     # 環境不備として非0終了するので、streak の対象にはならない。
@@ -841,6 +853,7 @@ def test_0本が3日続くと警告が出る(tmp_path, monkeypatch, capsys):
     assert "3日続けて0本です" in out
     streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
     assert streak["days"] == 3
+    assert streak["date"] == "2026-08-12"
 
 
 # --- C1: 引用カードの文言が一次資料に由来することの保証 ------------------
@@ -1058,12 +1071,17 @@ def test_画像が取れなかった題材のレシピは書き出さない(tmp_
     assert (recipes / "ok.json").exists()
 
 
-def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypatch):
+def test_本を作った翌日の初回実行でstreakがリセットされる(tmp_path, monkeypatch):
+    # 「1本作れば即リセット」ではない。前日ぶんの確定は翌日の最初の実行で
+    # 起きるので、作った当日のうちは days が前日までの畳み込み結果のまま
+    # 残り、翌日になって初めて0にリセットされる（_bump_empty_streak参照）。
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     (state / "empty_streak.json").write_text(
-        json.dumps({"days": 2}), encoding="utf-8")
+        json.dumps({"days": 2, "date": "2026-08-10", "made": False}),
+        encoding="utf-8")
     slots = [SLOT_MORNING]
     monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, datetime(2026, 8, 11, 6, 0, tzinfo=JST))
 
     cand = _candidate("only1")
     _write_candidates([cand], work)
@@ -1074,8 +1092,72 @@ def test_1本でも作れたらstreakはリセットされる(tmp_path, monkeypa
 
     run_daily.main()
 
+    # 8/11 に1本作れたが、8/10（空日）が畳み込まれて days は 2+1=3 のまま
+    streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak["days"] == 3
+    assert streak["made"] is True
+    assert streak["date"] == "2026-08-11"
+
+    # 翌日（8/12）に空実行が起きた時点で、8/11（made=True）が畳み込まれて
+    # ようやく 0 にリセットされる
+    state2 = tmp_path / "state2"
+    monkeypatch.setattr(run_daily, "STREAK", state2 / "empty_streak.json")
+    state2.mkdir()
+    (state2 / "empty_streak.json").write_text(
+        json.dumps({"days": 3, "date": "2026-08-11", "made": True}),
+        encoding="utf-8")
+    _freeze_now(monkeypatch, datetime(2026, 8, 12, 6, 0, tzinfo=JST))
+    run_daily._bump_empty_streak(0, datetime(2026, 8, 12, 6, 0, tzinfo=JST).date())
+    streak2 = json.loads((state2 / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak2["days"] == 0
+
+
+def test_同じ日に3回空実行しても日数は変わらない(tmp_path, monkeypatch):
+    # 1日3回（06:00/12:00/16:00）実行するようになった。同じ日のうちに
+    # 何度呼んでも「実行回数」ではなく「日」でしか数えてはいけない。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    today = datetime(2026, 8, 12).date()
+
+    run_daily._bump_empty_streak(0, today)
+    run_daily._bump_empty_streak(0, today)
+    run_daily._bump_empty_streak(0, today)
+
     streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
     assert streak["days"] == 0
+    assert streak["made"] is False
+
+
+def test_1日のうち1回でも投稿できれば同日の後続の空実行で増えない(tmp_path, monkeypatch):
+    # 06:00 に1本作り、12:00・16:00 が空振りに終わった日（実際に起こりうる）。
+    # 投稿できた日を「0本の日」として数えてはいけない。
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    today = datetime(2026, 8, 12).date()
+
+    run_daily._bump_empty_streak(1, today)   # 06:00: 1本作れた
+    run_daily._bump_empty_streak(0, today)   # 12:00: 空振り
+    run_daily._bump_empty_streak(0, today)   # 16:00: 空振り
+
+    streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak["days"] == 0
+    assert streak["made"] is True
+
+
+def test_丸1日空だと翌日の初回実行で1増える(tmp_path, monkeypatch):
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    day1 = datetime(2026, 8, 12).date()
+    day2 = datetime(2026, 8, 13).date()
+
+    run_daily._bump_empty_streak(0, day1)
+    run_daily._bump_empty_streak(0, day1)
+    run_daily._bump_empty_streak(0, day1)
+    # 8/12 のうちはまだ確定していないので 0 のまま
+    streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak["days"] == 0
+
+    run_daily._bump_empty_streak(0, day2)
+    streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak["days"] == 1
+    assert streak["date"] == day2.isoformat()
 
 
 # --- 同じ日に同じ発言を根拠にした動画を2本作らない -------------------------
@@ -1149,8 +1231,10 @@ def test_採れる題材が無い日は中止せず0本で終える(tmp_path, mo
     run_daily.main()          # SystemExit を上げない
 
     assert "採れる題材がありませんでした" in capsys.readouterr().out
-    assert json.loads((state / "empty_streak.json").read_text(
-        encoding="utf-8"))["days"] == 1
+    # 前日ぶんの記録が無いので、この時点ではまだ確定しておらず days は 0
+    streak = json.loads((state / "empty_streak.json").read_text(encoding="utf-8"))
+    assert streak["days"] == 0
+    assert streak["made"] is False
 
 
 def test_同じ出来事の見出しは続けて作らない(tmp_path, monkeypatch, capsys):

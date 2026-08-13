@@ -72,7 +72,8 @@ python scripts/run_daily.py --days-ahead 1 --limit 1
 
 **手で起動する運用。** その時点の残り枠の数だけ作り、07:30 / 18:30 の予約公開に
 載せて終わる。PC が日中落ちていても YouTube 側が定刻に公開する。
-毎朝の自動起動にしたい場合は末尾「タスクスケジューラへの登録（任意）」を参照。
+1日3回（06:00/12:00/16:00）の自動起動にしたい場合は末尾
+「タスクスケジューラへの登録（任意）」を参照。
 
 画像の事前準備は要らない。**発言者の顔写真を自動で取ってくる**（下記「画像」）。
 
@@ -151,7 +152,10 @@ run_daily.py
     防いでいる。直近14日ぶんを `state/used.json` に記録している。
   - `state/empty_streak.json` の `days` が3以上になると
     「N日続けて0本です。RSSの配点か採用ゲートを見直してください」と警告が出る。
-    収益化要件（90日で3本以上）に対する早期警戒。
+    収益化要件（90日で3本以上）に対する早期警戒。**1日3回実行しても
+    「実行回数」ではなく「日」で数える。** 同じ日に何度0本が続いても
+    days は増えず、確定は日をまたいだ最初の実行で起きる（前日が0本
+    だったかどうかが翌日の最初の実行でようやく分かるため）。
   - 終了コードが1のときは環境不備の疑いがある（メッセージに原因が出る）。
     ログを確認して `ANTHROPIC_API_KEY` / VOICEVOX の状態を直す。
 
@@ -233,7 +237,7 @@ python scripts/unpublish.py --all-today  # 当日分を全部戻す
 
 ## タスクスケジューラへの登録（任意）
 
-手で起動する運用なら不要。毎朝自動で走らせたい場合だけ、
+手で起動する運用なら不要。自動で走らせたい場合だけ、
 **管理者権限の PowerShell** で実行する（オーナー自身が登録すること）:
 
 ```powershell
@@ -241,11 +245,25 @@ schtasks /create /tn "news-youtube" /tr "python C:\Users\oshim\Documents\project
 ```
 
 **この形だとログが1行も残らない。** 無人実行の結果を後から見るには、
-`cmd /c` を挟んで出力をファイルに追記する:
+`cmd /c` を挟んで出力をファイルに追記する。
+
+**1日3回走らせる。** 06:00 の1回だけだと、そこで一過性の失敗
+（ネットワーク・VOICEVOX の詰まり）が起きただけでその日が0本になる。
+`run_daily.py` は予約済みの枠には作らず0.8秒で終了する（冪等）ので、
+何度走らせても二重投稿にならない。06:00 は朝の枠(07:30)に、
+12:00 と 16:00 は夕方の枠(18:30)に間に合う。18:30 以降は埋める枠が
+無いので走らせない。
 
 ```powershell
 schtasks /create /tn "news-youtube" /tr "cmd /c python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py >> C:\Users\oshim\Documents\projects\news-youtube\run_daily.log 2>&1" /sc daily /st 06:00 /f
+schtasks /create /tn "news-youtube-noon" /tr "cmd /c python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py >> C:\Users\oshim\Documents\projects\news-youtube\run_daily.log 2>&1" /sc daily /st 12:00 /f
+schtasks /create /tn "news-youtube-late" /tr "cmd /c python C:\Users\oshim\Documents\projects\news-youtube\scripts\run_daily.py >> C:\Users\oshim\Documents\projects\news-youtube\run_daily.log 2>&1" /sc daily /st 16:00 /f
 ```
+
+`schtasks` は1タスクに複数のトリガーを付けられないため、タスクを3つ作る。
+GUI（タスクスケジューラ）なら1タスクに3トリガーでもよい。
+1つ目のコマンドはタスク名 `news-youtube` を上書きするので、
+06:00 だけを登録していた頃の設定はこれで置き換わる。
 
 ログは **UTF-8（BOM無し）** で出る。Windows PowerShell 5.1 の
 `Get-Content` は既定が ANSI（cp932）なので、そのまま開くと全部化ける。
@@ -260,20 +278,61 @@ Get-Content C:\Users\oshim\Documents\projects\news-youtube\run_daily.log -Encodi
 エンジンの起動ログ（進捗バー）が数十行混ざるので、`- ` `✓ ` `! ` `✗ ` で
 始まる行だけを追うとよい。
 
-成功すると次のように表示される:
+成功すると次のように表示される（3つ登録するので、この行が計3回出る）:
 
 ```
 成功: スケジュール タスク "news-youtube" は正しく作成されました。
 ```
 
-登録を確認する:
+登録を確認する（3つとも登録されているか、タスク名を変えて確認する）:
 
 ```powershell
 schtasks /query /tn "news-youtube" /v /fo list
+schtasks /query /tn "news-youtube-noon" /v /fo list
+schtasks /query /tn "news-youtube-late" /v /fo list
 ```
 
-削除する場合:
+それぞれの `Next Run Time` が翌日（または当日の未来時刻）の
+06:00 / 12:00 / 16:00 になっていれば登録できている。
+
+削除する場合は3つとも消す（1つでも残すと、意図しない時刻に
+`run_daily.py` が走り続ける）:
 
 ```powershell
 schtasks /delete /tn "news-youtube" /f
+schtasks /delete /tn "news-youtube-noon" /f
+schtasks /delete /tn "news-youtube-late" /f
 ```
+
+## 止まったら知らせる
+
+`.github/workflows/watchdog.yml` が毎日 21:00 JST に、チャンネルの公開RSSを
+見て**直近7日に1本も公開されていなければワークフローを失敗させる**。
+失敗すると GitHub からメールが届く。認証情報は使っていない（公開RSSのみ）。
+
+手で確かめるときは同じものをローカルで叩ける:
+
+```bash
+python scripts/watch_channel.py
+```
+
+**メールが来たときに見る順番:**
+
+1. `Get-Content ...\run_daily.log -Encoding UTF8 -Tail 60` — 何が失敗したか
+2. 3つとも登録されているか（1つでも未登録・削除されていると、その枠だけ
+   ログに何も残らないので、ログを見るだけでは気づけない）:
+   ```powershell
+   schtasks /query /tn "news-youtube" /v /fo list
+   schtasks /query /tn "news-youtube-noon" /v /fo list
+   schtasks /query /tn "news-youtube-late" /v /fo list
+   ```
+3. `python scripts/yield_report.py --refresh` — 題材が枯れていないか
+
+**「workflow was disabled due to inactivity」というメールが来たら、それ自体が
+監視の停止。** GitHub はパブリックリポジトリの scheduled workflow を、
+60日間リポジトリへの活動が無いと自動で無効化する。この機能が目指す定常状態は
+「オーナーは何も触らずに動き続ける」なので、いつか必ずこのメールが来る。
+これはノイズではなく **watchdog そのものが止まっている**状態なので、
+上記の手順を素通りしてまず GitHub の Actions タブから watchdog を
+再度有効化すること（`Actions` → `watchdog` → `Enable workflow`）。
+再有効化すれば、次回の schedule から通常どおり動く。
