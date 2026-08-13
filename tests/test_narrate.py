@@ -83,6 +83,58 @@ def test_ensure_engine_起動しても応答しなければ例外にする(monke
     assert popen_calls, "起動を試みていない"
 
 
+def test_合成のタイムアウトは本番尺の音声を作りきれる長さにする():
+    """/synthesis のタイムアウトは、最長の尺を合成する実測時間より十分長いこと。
+
+    CPU版エンジンの実測で、63.5秒の音声の合成に **115.9秒** かかった
+    （＝音声1秒あたり約1.8秒）。メタデータ用の TIMEOUT（120秒）を
+    /synthesis にも使っていたため余裕が4秒しかなく、他プロセスの負荷で
+    容易に超える。超えると synthesize() が例外を投げ、run_daily.py は
+    それを「VOICEVOX未起動」＝環境不備と見なして**日次実行ごと中止**する
+    （実際に2回連続で0本になった）。実測の約2倍では足りないので、
+    最長尺 TARGET_MAX に対して4倍の秒数を最低ラインとする。
+    """
+    assert narrate.SYNTHESIS_TIMEOUT >= narrate.TARGET_MAX * 4
+
+
+def test_合成は長い方のタイムアウトで呼ぶ(monkeypatch, tmp_path):
+    """audio_query は短い TIMEOUT、/synthesis は SYNTHESIS_TIMEOUT で呼ぶ。
+
+    定数を足しただけで使い忘れると実測どおり120秒で切れるので、
+    実際に渡している値をここで押さえる。
+    """
+    wav_path = tmp_path / "src.wav"
+    _write_silence_wav(wav_path, seconds=1.0)
+    wav_bytes = wav_path.read_bytes()
+
+    calls = []
+
+    class _Response:
+        def __init__(self, payload=None, content=b""):
+            self._payload = payload
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _fake_post(url, **kwargs):
+        calls.append((url, kwargs.get("timeout")))
+        if url.endswith("/audio_query"):
+            return _Response(payload={"accent_phrases": []})
+        return _Response(content=wav_bytes)
+
+    monkeypatch.setattr(narrate.requests, "post", _fake_post)
+
+    narrate._synthesize_once("こんにちは", 13, 1.0, tmp_path / "voice.wav")
+
+    timeouts = dict((url.rsplit("/", 1)[-1], t) for url, t in calls)
+    assert timeouts["audio_query"] == narrate.TIMEOUT
+    assert timeouts["synthesis"] == narrate.SYNTHESIS_TIMEOUT
+
+
 def test_ensure_engine_応答済みなら何もせず即returnする(monkeypatch):
     class _OKResponse:
         def raise_for_status(self):
