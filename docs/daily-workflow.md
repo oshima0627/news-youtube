@@ -52,6 +52,16 @@ python scripts/run_daily.py
 python scripts/run_daily.py --days-ahead 1
 ```
 
+**1枠ぶんだけ作り直すときは `--limit` を付ける。** 予約済みの動画を
+`unpublish.py` で戻して差し替える場合など、その日の残り枠が2つあっても
+1本しか作りたくないことがある。`--days-ahead` だけだと残り全部を作って
+しまい、**すでに予約済みの枠に2本目が重なる**（`upload_youtube.py` に
+重複防止が無いので、同じ時刻に2本並ぶ）。埋まるのは早い方の枠から。
+
+```bash
+python scripts/run_daily.py --days-ahead 1 --limit 1
+```
+
 **手で起動する運用。** その時点の残り枠の数だけ作り、07:30 / 18:30 の予約公開に
 載せて終わる。PC が日中落ちていても YouTube 側が定刻に公開する。
 毎朝の自動起動にしたい場合は末尾「タスクスケジューラへの登録（任意）」を参照。

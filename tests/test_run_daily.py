@@ -246,6 +246,51 @@ def test_複数候補があっても枠の数までしか作らない(tmp_path, 
     assert seen == ["a"]           # b には手を付けない
 
 
+def test_limitで先頭の枠だけ埋める(tmp_path, monkeypatch, capsys):
+    """--limit N は先頭からN枠だけ埋める。
+
+    1枠ぶんだけ作り直したいことがある（公開前に内容を差し替えたいなど）。
+    そのとき --days-ahead だけでは同じ日の**残り全部**を作ってしまい、
+    すでに予約済みの枠に2本目が重なる。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING, SLOT_EVENING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cands = [_candidate("a"), _candidate("b")]
+    _write_candidates(cands, work)
+    for c in cands:
+        _prepare_photo(work / c["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--limit", "1"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "本日 1/1 本" in out
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == ["a"]                       # b には手を付けない
+    scheduled = fake_run.schedule_calls()
+    assert len(scheduled) == 1
+    # 埋めるのは先頭の枠。夕方の枠（予約済みのことがある）には触らない
+    assert SLOT_MORNING.isoformat() in scheduled[0]
+
+
+def test_limitが0以下なら受け付けない(tmp_path, monkeypatch):
+    """0本作る指定は誤りとして弾く。
+
+    そのまま通すと slots が空になり、「対象の枠は過ぎています」という
+    実際とは違う理由が表示されて終わる。
+    """
+    _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--limit", "0"])
+
+    with pytest.raises(SystemExit):
+        run_daily.main()
+
+
 def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
