@@ -6,6 +6,7 @@ from PIL import Image
 from scripts import build_short
 from scripts.build_short import compose_stage
 from scripts.cards import SHORT_SIZE
+from scripts.evidence import QUOTE_EXCERPT_MAX_CHARS
 
 NARRATION = "レーダー照射は攻撃の一歩手前だと国会で答弁されています。" * 12
 
@@ -23,7 +24,8 @@ def _photo(tmp_path, size=(1600, 900)):
 
 
 def test_下地は縦型の不透明画像になる(tmp_path):
-    got = compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録")
+    got = compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録",
+                        quote=NARRATION)
     assert got.size == SHORT_SIZE
     assert got.mode == "RGB"
 
@@ -32,8 +34,29 @@ def test_縦長の写真でも横幅いっぱいに収まる(tmp_path):
     photo = tmp_path / "tall.jpg"
     Image.new("RGB", (600, 1800), (10, 20, 30)).save(photo)
 
-    got = compose_stage(photo, SCRIPT, source="e-Stat")
+    got = compose_stage(photo, SCRIPT, source="e-Stat", quote=NARRATION)
     assert got.size == SHORT_SIZE
+
+
+def test_引用カードは一次資料の逐語から外れた文言を描かない(tmp_path, monkeypatch):
+    """手でCLIを叩く経路（write_script.py → build_short.py）でも検証を通す。
+
+    run_daily.py には ensure_grounded_card があるが、この経路はそこを
+    通らず、モデルが作った文字列が一次資料の出典キャプション付きで
+    引用カードに描かれうる状態だった（docs/known-issues.md の問題2）。
+    カードを描く直前で塞ぐ。
+    """
+    drawn = []
+    monkeypatch.setattr(build_short, "render_quote",
+                        lambda text, source: (drawn.append(text),
+                                              Image.new("RGB", (1080, 341)))[1])
+
+    script = dict(SCRIPT, quote_excerpt="一次資料に無いモデルの作文")
+    quote = "レーダー照射は攻撃の一歩手前だと国会で答弁されています。"
+
+    compose_stage(_photo(tmp_path), script, source="国会会議録", quote=quote)
+
+    assert drawn == [quote[:QUOTE_EXCERPT_MAX_CHARS]]
 
 
 # --- C1: figure の有無で根拠カードを出し分ける ----------------------------
@@ -48,7 +71,8 @@ def test_figureが空なら引用カードを使う(tmp_path, monkeypatch):
     monkeypatch.setattr(build_short, "render_figure",
                         lambda *a: pytest.fail("figureが空なのに数値カードを使っている"))
 
-    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録", figure="")
+    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録", figure="",
+                  quote=NARRATION)
 
     assert calls == [("quote", "攻撃の一歩手前", "国会会議録")]
 
@@ -62,7 +86,8 @@ def test_figureがあれば数値カードを使う(tmp_path, monkeypatch):
     monkeypatch.setattr(build_short, "render_quote",
                         lambda *a: pytest.fail("figureがあるのに引用カードを使っている"))
 
-    compose_stage(_photo(tmp_path), SCRIPT, source="e-Stat", figure="30%減")
+    compose_stage(_photo(tmp_path), SCRIPT, source="e-Stat", figure="30%減",
+                  quote=NARRATION)
 
     assert calls == [("figure", "照射回数", "1回", "e-Stat")]
 
@@ -81,7 +106,7 @@ def test_テロップ帯にはsubtitleを渡しナレーション全文は渡さ
                             calls.append(caption),
                             Image.new("RGB", (SHORT_SIZE[0], TELOP_H), (0, 0, 0)))[1])
 
-    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録")
+    compose_stage(_photo(tmp_path), SCRIPT, source="国会会議録", quote=NARRATION)
 
     assert calls == ["照射は攻撃の一歩手前"]
     assert NARRATION not in calls
@@ -89,7 +114,8 @@ def test_テロップ帯にはsubtitleを渡しナレーション全文は渡さ
 
 def test_実際のビルド経路で字幕の切り捨て警告が出ない(tmp_path, capsys):
     # モックせずに描画まで通し、「毎ビルド必ず出る警告」が消えたことを確認する。
-    compose_stage(_photo(tmp_path), SCRIPT, source="第217回国会 予算委員会")
+    compose_stage(_photo(tmp_path), SCRIPT, source="第217回国会 予算委員会",
+                  quote=NARRATION)
     out = capsys.readouterr().out
     assert "テロップが" not in out
 

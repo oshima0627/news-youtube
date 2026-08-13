@@ -54,9 +54,11 @@ from scripts.collect_news import EXIT_NO_TOPIC  # noqa: E402
 from scripts.commons import credit as commons_credit  # noqa: E402
 from scripts.commons import resolve as resolve_photo  # noqa: E402
 from scripts.evidence import (  # noqa: E402
+    QUOTE_EXCERPT_MAX_CHARS,  # noqa: F401  （tests から run_daily 経由で参照）
     EvidenceSourcesUnavailable,
     build_recipe,
     collect,
+    ground_excerpt,
 )
 from scripts.narrate import synthesize  # noqa: E402
 from scripts.photos import download as download_photo  # noqa: E402
@@ -180,11 +182,13 @@ def ensure_photo(ev, dest: Path) -> dict:
     return download_photo(info["url"], dest, credit=commons_credit(info))
 
 
-QUOTE_EXCERPT_MAX_CHARS = 25
-
-
 def ensure_grounded_card(script, evidence: dict):
     """画面の根拠カードに出る文字列が一次資料に由来することを保証する。
+
+    判定そのものは `evidence.ground_excerpt`。同じ検証を build_short 側でも
+    描画の直前に通している（手でCLIを叩く経路がここを通らないため）。
+    ここに残しているのは、**差し替えを script.json に残す**ためで、
+    画面と script.json が食い違わないようにしている。
 
     根拠カードには必ず一次資料の出典キャプション（会議名・日付・発言者）が
     印字される。したがってカードに出す文字列が一次資料に無い言葉だと、
@@ -204,12 +208,11 @@ def ensure_grounded_card(script, evidence: dict):
     if (evidence.get("figure") or "").strip():
         return script
 
-    quote = (evidence.get("quote") or "").strip()
     excerpt = (script.quote_excerpt or "").strip()
-    if excerpt and excerpt in quote:
+    fallback = ground_excerpt(excerpt, evidence.get("quote") or "")
+    if fallback == excerpt:
         return script
 
-    fallback = quote[:QUOTE_EXCERPT_MAX_CHARS]
     print(f"! 引用カードの文言が一次資料の逐語引用に含まれていません。"
           f"モデルの出力を捨てて逐語引用の先頭から機械的に抜き出します"
           f"（モデル出力: {excerpt[:40]!r} → 差し替え: {fallback!r}）")

@@ -64,6 +64,30 @@ def _is_primary_host(url: str) -> bool:
     return host.endswith(EVIDENCE_HOST_SUFFIX)
 
 
+# 引用カードに出す一節の長さ。逐語引用から機械的に抜き出すときの上限。
+QUOTE_EXCERPT_MAX_CHARS = 25
+
+
+def ground_excerpt(excerpt: str, quote: str) -> str:
+    """引用カードに出してよい文字列を返す。**一次資料に由来することを保証する。**
+
+    引用カードには必ず一次資料の出典キャプション（会議名・日付・発言者）が
+    印字される。したがってカードに出す文字列が一次資料に無い言葉だと、
+    **モデルが作った文字列に一次資料の出典が付く**ことになり、
+    「一次資料が取れなければ公開しない」という設計方針がそこだけ破れる。
+
+    `excerpt`（モデルが返した一節）が `quote`（逐語引用）の部分文字列なら
+    そのまま返す。外れていたらモデルの出力を捨て、逐語引用の先頭から
+    機械的に抜き出した文字列を返す。`quote` が空なら差し替えようが無いので
+    空文字を返す（一次資料に無い文字列をそのまま通すことだけは避ける）。
+    """
+    quote = (quote or "").strip()
+    excerpt = (excerpt or "").strip()
+    if excerpt and excerpt in quote:
+        return excerpt
+    return quote[:QUOTE_EXCERPT_MAX_CHARS]
+
+
 def is_admissible(ev: Evidence) -> bool:
     """出典URLと、具体的な数値または逐語引用の両方が揃っていれば True。"""
     if not ev.source_url or not _is_primary_host(ev.source_url):
