@@ -70,3 +70,52 @@ def count_recent(entries: list[Entry], now: datetime, within_days: int) -> int:
 def latest(entries: list[Entry]) -> Entry | None:
     """いちばん新しい公開。1本も無ければ None。"""
     return max(entries, key=lambda e: e.published, default=None)
+
+
+def now_jst() -> datetime:
+    """「今」を1箇所に閉じ込める（テストから差し替えるため）。"""
+    return datetime.now(JST)
+
+
+def fetch_feed(channel_id: str = CHANNEL_ID) -> str:
+    """チャンネルの公開RSSを取る。**認証は要らない。**
+
+    公開済み動画は誰でも見られるので、APIキーもOAuthも持たずに済む。
+    監視側に投稿権限を置かないためにこの経路を選んでいる。
+    """
+    with urllib.request.urlopen(FEED_URL.format(channel_id), timeout=30) as r:
+        return r.read().decode("utf-8")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--within", type=int, default=DEFAULT_WITHIN_DAYS, metavar="N",
+                    help=f"直近N日を見る（既定 {DEFAULT_WITHIN_DAYS}）")
+    ap.add_argument("--channel", default=CHANNEL_ID, help="チャンネルID")
+    a = ap.parse_args()
+
+    try:
+        entries = parse_entries(fetch_feed(a.channel))
+    except Exception as e:                      # noqa: BLE001
+        # 取得できない＝監視できていない。黙って成功にすると、監視が壊れた日から
+        # 止まっていることに気づけなくなる。落として気づけるようにする。
+        print(f"✗ チャンネルの公開状況を取得できませんでした: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    now = now_jst()
+    n = count_recent(entries, now, a.within)
+    last = latest(entries)
+    if n:
+        print(f"✓ 直近{a.within}日に {n}本 公開されています"
+              f"（最新: {last.published.astimezone(JST):%Y-%m-%d %H:%M} {last.title}）")
+        return
+
+    where = (f"最後の公開は {last.published.astimezone(JST):%Y-%m-%d %H:%M} の"
+             f"「{last.title}」です" if last else "公開済みの動画がありません")
+    print(f"✗ 直近{a.within}日に1本も公開されていません。{where}。"
+          "run_daily.log を確認してください", file=sys.stderr)
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

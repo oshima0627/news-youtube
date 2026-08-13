@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+from scripts import watch_channel
 from scripts.watch_channel import Entry, count_recent, latest, parse_entries
 
 JST = timezone(timedelta(hours=9))
@@ -86,3 +89,48 @@ def test_最後の公開を返す():
 
 def test_1本も無ければ最後の公開は無い():
     assert latest([]) is None
+
+
+def test_1本でもあれば正常終了する(monkeypatch, capsys):
+    monkeypatch.setattr(watch_channel, "fetch_feed", lambda channel_id=None: FEED)
+    monkeypatch.setattr(watch_channel, "now_jst",
+                        lambda: datetime(2026, 8, 13, 21, 0, tzinfo=JST))
+    monkeypatch.setattr("sys.argv", ["watch_channel.py"])
+
+    watch_channel.main()          # SystemExit が飛ばないこと
+
+    out = capsys.readouterr().out
+    assert "2本" in out
+
+
+def test_0本なら終了コード1で落ちる(monkeypatch, capsys):
+    # 「止まっている」ことに気づけないと8か月放置の再現になる。
+    monkeypatch.setattr(watch_channel, "fetch_feed", lambda channel_id=None: FEED)
+    monkeypatch.setattr(watch_channel, "now_jst",
+                        lambda: datetime(2027, 8, 13, 21, 0, tzinfo=JST))
+    monkeypatch.setattr("sys.argv", ["watch_channel.py"])
+
+    with pytest.raises(SystemExit) as exc:
+        watch_channel.main()
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "公開されていません" in err
+    # 最後の公開がいつだったかを必ず出す（原因の当たりを付けるため）
+    assert "永住許可" in err
+
+
+def test_取得に失敗したときも終了コード1で落ちる(monkeypatch, capsys):
+    # 取得できない＝監視できていない。黙って成功にすると、監視が壊れた日から
+    # 止まっていることに気づけなくなる。
+    def _boom(channel_id=None):
+        raise OSError("接続できません")
+
+    monkeypatch.setattr(watch_channel, "fetch_feed", _boom)
+    monkeypatch.setattr("sys.argv", ["watch_channel.py"])
+
+    with pytest.raises(SystemExit) as exc:
+        watch_channel.main()
+
+    assert exc.value.code == 1
+    assert "接続できません" in capsys.readouterr().err
