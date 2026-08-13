@@ -225,8 +225,15 @@ def query_duration(query: dict) -> float:
 
 
 def fit_speed(query: dict) -> float:
-    """尺を目標中央値(58.5秒)に合わせる speedScale。可動域に収める。"""
-    base = query_duration(query)
+    """尺を目標中央値(58.5秒)に合わせる speedScale。可動域に収める。
+
+    基準にするのは **speedScale=1.0 で読んだときの尺**。`_synthesize_once` は
+    求めた値を絶対値として上書きするので、query が既に持っている speedScale
+    ごと打ち消しておかないと、audio_query が 1.0 以外を返した瞬間に倍率ぶん
+    ずれた答えを出す（VOICEVOX の既定は 1.0 だが、既定値はエンジン側の都合で
+    変わりうる。読み方は同じなのに答えが変わる形の壊れ方は気づきにくい）。
+    """
+    base = query_duration({**query, "speedScale": 1.0})
     if base <= 0:
         return 1.0
     return max(SPEED_MIN, min(SPEED_MAX, base / TARGET_MID))

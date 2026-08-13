@@ -170,6 +170,26 @@ def test_fit_speedは尺を目標中央値に合わせる():
     assert narrate.fit_speed(long) == narrate.SPEED_MAX
 
 
+def test_fit_speedはqueryのspeedScaleに影響されない():
+    """読み方が同じなら、query の speedScale が何であれ同じ答えを出す。
+
+    `_synthesize_once` は求めた speedScale を**絶対値として**上書きする。
+    一方 `query_duration` は「その query のままの尺」を返すので、
+    audio_query が 1.0 以外を返した日には、割る前の長さを取り違えて
+    倍率ぶんずれた speedScale を出してしまう。
+
+    VOICEVOX は既定で 1.0 を返すので今は表に出ないが、既定値は
+    エンジン側の都合で変わりうる。読み方（モーラの長さ）は同じなのに
+    答えが変わる、という形の壊れ方は気づきにくいのでここで縛る。
+    """
+    moras = 585                       # 58.7秒ぶん。可動域の内側に収まる長さ
+    base = narrate.fit_speed(_query(moras))
+    assert narrate.SPEED_MIN < base < narrate.SPEED_MAX, "クランプされていては検証にならない"
+    for speed in (0.5, 1.2, 2.0):
+        assert narrate.fit_speed(_query(moras, speed=speed)) \
+            == pytest.approx(base), f"speedScale={speed} で答えが変わっている"
+
+
 def test_fit_speedは可動域に収める():
     assert narrate.fit_speed(_query(1)) == narrate.SPEED_MIN
     assert narrate.fit_speed(_query(5000)) == narrate.SPEED_MAX
