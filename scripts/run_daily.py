@@ -204,9 +204,20 @@ def main() -> None:
                     help="台本・音声・動画までは作るが、YouTubeへのアップロードは行わない")
     ap.add_argument("--days-ahead", type=int, default=0, metavar="N",
                     help="何日先の枠に載せるか（1で翌日の朝・夕の2枠）")
+    ap.add_argument("--limit", type=int, default=None, metavar="N",
+                    help="先頭からN枠だけ埋める（1枠ぶんだけ作り直したいとき）")
     a = ap.parse_args()
+    if a.limit is not None and a.limit < 1:
+        # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
+        # 実際とは違う理由を表示して終わる。
+        ap.error("--limit は1以上を指定してください")
 
     slots = pending_slots(datetime.now(JST), a.days_ahead)
+    if a.limit is not None:
+        # 公開前に1本だけ差し替えたいとき、--days-ahead だけではその日の
+        # **残り全部**を作ってしまい、すでに予約済みの枠に2本目が重なる
+        # （upload_youtube.py に重複防止が無いので、同じ時刻に2本並ぶ）。
+        slots = slots[:a.limit]
     if not slots:
         print("対象の枠は過ぎています。--days-ahead 1 で翌日分を作れます")
         return
