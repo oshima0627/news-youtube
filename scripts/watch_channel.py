@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -36,6 +37,18 @@ FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 ATOM = {"a": "http://www.w3.org/2005/Atom"}
 DEFAULT_WITHIN_DAYS = 7
 JST = timezone(timedelta(hours=9))
+
+# commons.py / photos.py にも同じ値があるが、watch_channel.py は他の
+# scripts/* を import しない方針（モジュール冒頭のコメント参照）なので
+# あえて重複させている。既定の `Python-urllib/3.13` は、共有ランナーの
+# データセンターIPからだと 429 の的になりやすい。
+USER_AGENT = "news-youtube/1.0 (https://github.com/oshima0627/news-youtube)"
+
+# 1回の 429 / DNS の一過性障害で「チャンネルが死んでいる」ように見える
+# 誤報を出さないためのリトライ間隔（秒）。要素数ぶんだけ再試行する
+# （＝合計 len+1 回試行する）。それでも失敗したら諦めて例外を送出する
+# （失敗閉じ＝黙って成功扱いにしない、は意図的な設計なので変えない）。
+FETCH_RETRY_BACKOFF = (2, 5)
 
 
 @dataclass(frozen=True)
@@ -82,9 +95,25 @@ def fetch_feed(channel_id: str = CHANNEL_ID) -> str:
 
     公開済み動画は誰でも見られるので、APIキーもOAuthも持たずに済む。
     監視側に投稿権限を置かないためにこの経路を選んでいる。
+
+    **最大3回までリトライする。** GitHub Actions の共有ランナーIPからの
+    単発リクエストは 429 や DNS の一過性障害を踏みやすく、それだけで
+    「チャンネルが死んでいる」ように見える通知が飛ぶと、オーナーが
+    通知を無視するようになる（監視が無いのと同じになる）。それでも
+    全滅したときは黙って成功扱いにせず例外を送出する（失敗閉じ）。
     """
-    with urllib.request.urlopen(FEED_URL.format(channel_id), timeout=30) as r:
-        return r.read().decode("utf-8")
+    req = urllib.request.Request(FEED_URL.format(channel_id),
+                                 headers={"User-Agent": USER_AGENT})
+    last_error: Exception | None = None
+    for backoff in (0, *FETCH_RETRY_BACKOFF):
+        if backoff:
+            time.sleep(backoff)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read().decode("utf-8")
+        except Exception as e:                      # noqa: BLE001
+            last_error = e
+    raise last_error
 
 
 def main() -> None:
@@ -93,6 +122,11 @@ def main() -> None:
                     help=f"直近N日を見る（既定 {DEFAULT_WITHIN_DAYS}）")
     ap.add_argument("--channel", default=CHANNEL_ID, help="チャンネルID")
     a = ap.parse_args()
+    if a.within < 0:
+        # 0 は「直近0日」＝必ず0本になるので、workflow_dispatch から
+        # 意図的に指定して通知経路を確かめるための正規のレバーとして許可する
+        # （.github/workflows/watchdog.yml 参照）。負の値には意味が無いので弾く。
+        ap.error("--within は0以上を指定してください")
 
     try:
         entries = parse_entries(fetch_feed(a.channel))

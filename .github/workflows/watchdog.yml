@@ -10,14 +10,23 @@ on:
     # 見るので、当日ぶんの結果を当日のうちに判定できる。
     - cron: "0 12 * * *"
   workflow_dispatch:        # 手で叩いて確かめられるようにする
+    inputs:
+      within:
+        description: "直近N日（0を指定すると必ず失敗するので通知の経路を確認できる）"
+        default: "7"
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       # pip install はしない。watch_channel.py は標準ライブラリだけで動く。
-      - run: python scripts/watch_channel.py --within 7
+      # schedule 起動には within 入力が無いので、既定の7を使う。
+      - run: python scripts/watch_channel.py --within "${{ inputs.within || 7 }}"

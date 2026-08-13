@@ -120,6 +120,61 @@ def test_0本なら終了コード1で落ちる(monkeypatch, capsys):
     assert "永住許可" in err
 
 
+def test_一時的な取得失敗の後に成功すればフィードを返す(monkeypatch):
+    # 共有ランナーのIPからの単発リクエストは 429 や DNS の一過性障害を
+    # 踏みやすい。1回失敗しただけで「チャンネルが死んでいる」ように見える
+    # 誤報を出さないよう、3回まではリトライする。
+    class _FakeResponse:
+        def __init__(self, data: bytes):
+            self._data = data
+
+        def read(self) -> bytes:
+            return self._data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    requests: list = []
+
+    def fake_urlopen(req, timeout=30):
+        requests.append(req)
+        if len(requests) < 3:
+            raise OSError("一時的に失敗しました（テスト用）")
+        return _FakeResponse(FEED.encode("utf-8"))
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(watch_channel.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(watch_channel.time, "sleep", lambda s: sleeps.append(s))
+
+    got = watch_channel.fetch_feed()
+
+    assert got == FEED
+    assert len(requests) == 3
+    assert sleeps == [2, 5]              # 1回目失敗後2秒、2回目失敗後5秒
+    # 既定の User-Agent（Python-urllib/x.y）はデータセンターIPからの
+    # 429 の的になりやすいため、明示的に設定してあること。
+    assert requests[0].get_header("User-agent")
+
+
+def test_取得が持続的に失敗すれば送出する(monkeypatch):
+    # 失敗閉じ（fail closed）は維持する。リトライしても駄目なら諦めて
+    # 例外を上げ、main() 側が終了コード1で落とせるようにする。
+    def always_fail(req, timeout=30):
+        raise OSError("接続できません（テスト用）")
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(watch_channel.urllib.request, "urlopen", always_fail)
+    monkeypatch.setattr(watch_channel.time, "sleep", lambda s: sleeps.append(s))
+
+    with pytest.raises(OSError):
+        watch_channel.fetch_feed()
+
+    assert sleeps == [2, 5]
+
+
 def test_取得に失敗したときも終了コード1で落ちる(monkeypatch, capsys):
     # 取得できない＝監視できていない。黙って成功にすると、監視が壊れた日から
     # 止まっていることに気づけなくなる。
@@ -134,3 +189,31 @@ def test_取得に失敗したときも終了コード1で落ちる(monkeypatch,
 
     assert exc.value.code == 1
     assert "接続できません" in capsys.readouterr().err
+
+
+def test_withinが負なら受け付けない(monkeypatch, capsys):
+    # --within 0 は「必ず失敗させて通知経路を確認する」ための正規の使い方
+    # （watchdog.yml の workflow_dispatch 入力）として意図的に許可するので、
+    # 弾くのは負の値だけにする。ap.error() による終了（コード2）であることを
+    # 確認し、たまたま0本で終了コード1になっただけではないことを区別する。
+    monkeypatch.setattr("sys.argv", ["watch_channel.py", "--within", "-1"])
+
+    with pytest.raises(SystemExit) as exc:
+        watch_channel.main()
+
+    assert exc.value.code == 2
+    assert "--within" in capsys.readouterr().err
+
+
+def test_withinが0なら受け付けて必ず終了コード1になる(monkeypatch, capsys):
+    # 0を指定すると「直近0日」＝必ず0本になるので、通知経路を手で確かめる
+    # ためのレバーとして使える（watchdog.yml のコメント参照）。
+    monkeypatch.setattr(watch_channel, "fetch_feed", lambda channel_id=None: FEED)
+    monkeypatch.setattr(watch_channel, "now_jst",
+                        lambda: datetime(2026, 8, 13, 21, 0, tzinfo=JST))
+    monkeypatch.setattr("sys.argv", ["watch_channel.py", "--within", "0"])
+
+    with pytest.raises(SystemExit) as exc:
+        watch_channel.main()
+
+    assert exc.value.code == 1
