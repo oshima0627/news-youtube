@@ -38,6 +38,17 @@ SPEAKER_NAME = "青山龍星"
 STYLE_NAME = "ノーマル"
 TIMEOUT = 120
 
+# /synthesis だけ別枠にする。話者一覧やモーラ数の取得（audio_query）は
+# 実測で1秒未満だが、**合成そのものは音声1秒あたり約1.8秒かかる**
+# （CPU版エンジンの実測: 63.5秒の音声で115.9秒）。TIMEOUT=120 を合成にも
+# 使っていたため余裕が4秒しかなく、他プロセスの負荷で容易に超えた。
+# 超えると synthesize() が例外を送出し、run_daily.py はそれを
+# 「VOICEVOX未起動」＝環境不備と判断して**日次実行ごと中止**するため、
+# 合成の遅さがそのまま「本日0本」になる（実際に2回連続で起きた）。
+# エンジンが死んでいる場合は ensure_engine() が /version を5秒で先に
+# 弾くので、ここを長くしても気づけなくなることはない。
+SYNTHESIS_TIMEOUT = 600
+
 # ショート動画の尺の許容範囲。script_writer.py の narration（350〜400字）を
 # 素直に読み上げると文字数や句読点の量でこの範囲を外れることがあるため、
 # synthesize() は実測してから speedScale を補正する（下記参照）。
@@ -178,7 +189,7 @@ def _synthesize_once(text: str, sid: int, speed_scale: float, dest: Path) -> flo
     query = q.json()
     query["speedScale"] = speed_scale
 
-    s = requests.post(f"{ENGINE}/synthesis", timeout=TIMEOUT,
+    s = requests.post(f"{ENGINE}/synthesis", timeout=SYNTHESIS_TIMEOUT,
                       params={"speaker": sid}, json=query)
     s.raise_for_status()
     dest.parent.mkdir(parents=True, exist_ok=True)
