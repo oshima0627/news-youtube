@@ -1,3 +1,7 @@
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from scripts import narrate, script_writer
@@ -107,6 +111,42 @@ def test_figureがあるときだけ数値カードの指示が入る():
 # 起こる環境不備（ScriptWriterUnavailable）として区別される。呼び出し側
 # （run_daily.py）はこの2つを別々に扱う（前者はその題材だけ飛ばし、
 # 後者は日次実行全体を中止する）ため、型そのものをここで固定する。
+
+
+def test_import時点ではanthropicを読み込まない():
+    """`import scripts.script_writer` の時点で SDK を読み込まない。
+
+    `anthropic` の import は実測20.3秒かかる（`python -X importtime`）。
+    run_daily.py はモジュール先頭で script_writer を import するので、
+    **台本生成に到達しない日でもこの20秒を払っていた**。枠が全部埋まって
+    いる日は何もせず終わるのに、その前に20秒待つことになる。
+
+    サブプロセスで確かめる。同じプロセス内では他のテストが先に
+    anthropic を読み込んでいる可能性があり、判定にならない。
+    """
+    code = ("import sys; import scripts.script_writer; "
+            "sys.exit(1 if 'anthropic' in sys.modules else 0)")
+    proc = subprocess.run([sys.executable, "-c", code],
+                          cwd=Path(__file__).resolve().parents[1],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert proc.returncode == 0, (
+        "script_writer を import しただけで anthropic まで読み込んでいる。"
+        f"stderr:\n{proc.stderr}")
+
+
+def test_SDKが無いときは環境不備の例外にする(monkeypatch):
+    """遅延 import にしても、失敗の型は変えない。
+
+    素の ImportError のまま出すと、run_daily.py の
+    「ScriptWriterUnavailable なら日次実行を即座に中止」の分岐に乗らず、
+    スタックトレースだけが出て原因が読み取りにくくなる。
+    """
+    monkeypatch.setattr(script_writer, "Anthropic", None)
+    monkeypatch.setattr(script_writer, "_IMPORT_SDK",
+                        lambda: (_ for _ in ()).throw(ImportError("no module")))
+
+    with pytest.raises(ScriptWriterUnavailable, match="anthropic"):
+        write(RECIPE)
 
 
 class _FakeMessages:
