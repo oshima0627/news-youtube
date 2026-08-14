@@ -1093,6 +1093,51 @@ def test_チャンネル取り違えは環境不備として即座に中止す�
     assert seen == []
 
 
+def test_チャンネルを確認できないときは取り違えと違う案内で中止する(
+        tmp_path, monkeypatch, capsys):
+    """クォータ超過・通信不能も中止するが、対処は取り違えと違う。
+
+    実測 2026-08-14: クォータ超過を取り違えとして扱った結果、
+    「token.json が別チャンネルに紐づいている可能性が高い」と報告し、
+    削除して認証し直すよう促した。正常なトークンを捨てさせるうえ、
+    クォータは1つも回復しない。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING, SLOT_EVENING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cands = [_candidate("first"), _candidate("second")]
+    _write_candidates(cands, work)
+    for c in cands:
+        _prepare_photo(work / c["id"])
+
+    class _UnverifiedRun(FakeRun):
+        def __call__(self, cmd, **kwargs):
+            self.calls.append(list(cmd))
+            if any("upload_youtube.py" in str(x) for x in cmd):
+                raise subprocess.CalledProcessError(
+                    run_daily.EXIT_CHANNEL_UNVERIFIED, cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+
+    fake_run = _UnverifiedRun()
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr(run_daily.subprocess, "run", fake_run)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "確認できませんでした" in err
+    assert "中止します" in err
+    assert "別チャンネルに紐づいている" not in err   # 取り違えとは言わない
+    assert "消さないこと" in err
+    # どの題材でも同じ理由で失敗するので、2件目は試さない
+    assert len(fake_run.upload_calls()) == 1
+
+
 # --- Minor: レシピの書き出し位置 -------------------------------------------
 
 def test_画像が取れなかった題材のレシピは書き出さない(tmp_path, monkeypatch):
