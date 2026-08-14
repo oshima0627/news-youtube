@@ -169,6 +169,48 @@ def test_発言が空のレスポンスは空リストになる():
     assert parse_speeches({"numberOfRecords": 0}) == []
 
 
+def test_会議録情報_出席者名簿_は発言として扱わない():
+    # 各会議録の先頭には speechOrder=0 / speaker="会議録情報" のレコードが入って
+    # いて、中身は開会時刻と出席者名簿。発言ではないのに2,000字近くあり、
+    # 議員名・役職名を大量に含むので、検索語がいくらでも近接する
+    # （実測: 「福岡 議員 要求」で採用可12件の全部がこれだった）。
+    # 採用すると出席者名簿に一次資料の出典キャプションが付いた引用カードが出る。
+    payload = {
+        "speechRecord": [
+            {
+                "speechID": "121914260X00720251216_000",
+                "session": 219,
+                "nameOfHouse": "参議院",
+                "nameOfMeeting": "厚生労働委員会",
+                "date": "2025-12-16",
+                "speechOrder": 0,
+                "speaker": "会議録情報",
+                "speech": "令和七年十二月十六日（火曜日）　午後一時開会　委員の異動"
+                          "　国務大臣　厚生労働大臣　福岡資麿君　衆議院議員　藤丸敏君",
+                "speechURL": "https://kokkai.ndl.go.jp/txt/121914260X00720251216/0",
+            }
+        ]
+    }
+    assert parse_speeches(payload) == []
+
+
+def test_speechOrderが欠けている発言は落とさない():
+    # 会議録情報を落とす条件が「speechOrder が 0 か」だけだと、
+    # speechOrder を返さない応答で .get() が None になる。None を 0 と
+    # 同一視する書き方（not rec.get(...)）にすると発言が丸ごと消える。
+    payload = {
+        "speechRecord": [
+            {
+                "speechID": "x",
+                "speaker": "野田佳彦",
+                "speech": "私どもは議員定数を四十五削減すると申し上げてまいりました。",
+                "speechURL": "https://kokkai.ndl.go.jp/#/detail?x=1",
+            }
+        ]
+    }
+    assert len(parse_speeches(payload)) == 1
+
+
 def test_フィールドが欠損していてもcontextが壊れない():
     # session / nameOfHouse / nameOfMeeting / date が欠損した応答を想定
     payload = {
