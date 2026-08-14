@@ -71,8 +71,14 @@ python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
 - 採点基準: [`specs/evaluation-rubric.md`](specs/evaluation-rubric.md)
 - 採点CLI: `python scripts/relevance_eval.py`（合格ラインを外すと終了コード1）
 
-**ゲート・`keywords.POLICY`・`sources.PLUS`/`MINUS` を触ったら、このCLIを走らせて
-5点の件数がベースライン（4/11）から増えたかで採否を決める。**
+**ゲート・`keywords.POLICY`・`sources.PLUS`/`MINUS` を触ったら、このCLIを走らせる。**
+
+**ただし「5点の件数」を採否の判定に使わないこと。** 2026-08-14 に同じ11件を
+再測定したところ、入力がまったく同じなのに 5点が 4 → 2 に動いた
+（[`evals/relevance-2026-08-14.md`](evals/relevance-2026-08-14.md)）。
+動いたのは5点と3点の境界にある2件だけで、**1点（報じられた出来事が無い）の
+層は動いていない**。件数差で採否を決めると、変更の良し悪しではなく
+その日の揺れを見ることになる。見るなら1点の件数か、各件の点の変化。
 
 独立評価者を本番パイプラインの関門として組み込むかは**未決**。
 現状は診断専用で、`run_daily.py` からは呼んでいない。
