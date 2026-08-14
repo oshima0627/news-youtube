@@ -72,10 +72,10 @@ def test_current_channelはitemsが空ならNoneを返す():
     assert uy.current_channel(service) is None
 
 
-def test_current_channelはHttpErrorのときNoneを返す(capsys):
+def _raising_service(error):
     class _RaisingList:
         def execute(self):
-            raise _http_error()
+            raise error
 
     class _RaisingChannels:
         def list(self, part, mine):
@@ -85,8 +85,49 @@ def test_current_channelはHttpErrorのときNoneを返す(capsys):
         def channels(self):
             return _RaisingChannels()
 
-    assert uy.current_channel(_RaisingService()) is None
-    assert "チャンネルを確認できませんでした" in capsys.readouterr().out
+    return _RaisingService()
+
+
+def test_チャンネルを確認できなかったときは取り違えと別の終了コードで止まる(capsys):
+    """None を返して取り違えガードに任せると、**別チャンネル**と同じ扱いになる。
+
+    実測 2026-08-14: クォータ超過（403 quotaExceeded）で channels.list が
+    落ちた結果、「アップロード先のチャンネルが指定と一致しません／実際: 取得
+    できず」と表示され、対処として token.json の削除を促した。正常なトークンを
+    捨てさせるうえ、クォータは1つも回復しない。
+    """
+    with pytest.raises(SystemExit) as e:
+        uy.current_channel(_raising_service(_http_error()))
+
+    assert e.value.code == uy.EXIT_CHANNEL_UNVERIFIED == 4
+    err = capsys.readouterr().err
+    assert "確認できませんでした" in err
+    assert "一致しません" not in err          # 取り違えとは言わない
+    assert "削除" not in err                  # token.json を捨てさせない
+
+
+def test_クォータ超過のときは待てば直ることとリセット時刻を出す(capsys):
+    """原因が分からないと、正しいトークンを消す方向に手が動く。"""
+    from googleapiclient.errors import HttpError
+
+    class _FakeResp:
+        status = 403
+        reason = "Forbidden"
+
+    # 実際に返ってきた応答と同じ形（2026-08-14 の channels.list）。
+    quota_error = HttpError(resp=_FakeResp(), content=(
+        b'{"error": {"code": 403, "message": "The request cannot be completed'
+        b' because you have exceeded your quota.", "errors": [{"message":'
+        b' "quota", "domain": "youtube.quota", "reason": "quotaExceeded"}]}}'))
+
+    with pytest.raises(SystemExit) as e:
+        uy.current_channel(_raising_service(quota_error))
+
+    assert e.value.code == uy.EXIT_CHANNEL_UNVERIFIED
+    err = capsys.readouterr().err
+    assert "クォータ" in err
+    assert "リセット" in err
+    assert "消さないこと" in err
 
 
 # --- assert_expected_channel --------------------------------------------
@@ -151,16 +192,19 @@ def test_チャンネルIDが一致しないときは終了しメッセージに
     assert other_title in err
 
 
-def test_current_channelがNoneのときは終了する(capsys):
-    service = _FakeService(items=[])  # current_channel は None を返す
+def test_アカウントにチャンネルが1つも無いときは終了する(capsys):
+    # current_channel が None を返すのはこの場合だけ（確認できなかったときは
+    # current_channel 側が EXIT_CHANNEL_UNVERIFIED で止める）。
+    service = _FakeService(items=[])
     meta = {"id": "x", "title": "t", "expected_channel_id": EXPECTED_ID}
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as e:
         uy.assert_expected_channel(service, meta)
 
+    assert e.value.code == uy.EXIT_CHANNEL_MISMATCH
     err = capsys.readouterr().err
     assert EXPECTED_ID in err
-    assert "取得できず" in err
+    assert "チャンネルが1つもありません" in err
 
 
 def test_一致するときだけ通過してチャンネル情報を返す():

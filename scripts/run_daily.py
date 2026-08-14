@@ -69,7 +69,10 @@ from scripts.script_writer import (  # noqa: E402
     write,
 )
 from scripts.slots import pending_slots  # noqa: E402
-from scripts.upload_youtube import EXIT_CHANNEL_MISMATCH  # noqa: E402
+from scripts.upload_youtube import (  # noqa: E402
+    EXIT_CHANNEL_MISMATCH,
+    EXIT_CHANNEL_UNVERIFIED,
+)
 
 # 一次資料の取得元が「落ちている」と判断するまでの連続失敗数。
 # evidence.collect() の EvidenceSourcesUnavailable は、系統が国会会議録の
@@ -573,6 +576,21 @@ def main() -> None:
                 # なので、どの題材でも同じ理由で必ず失敗する。題材固有の失敗と
                 # して次に進むと、全候補ぶん同じ失敗を繰り返した末に
                 # 終了コード0で「本日 0/2 本」とだけ表示されて気づけない。
+                # 「チャンネルを確認できなかった」（クォータ超過・通信不能）は
+                # 取り違えとは別。どの題材でも同じ理由で失敗するので中止する点は
+                # 同じだが、**対処が違う**（認証のやり直しではなく、待つか通信を
+                # 直す）。取り違え扱いのままだと、正常な token.json を削除させる
+                # 案内が出る。
+                if (isinstance(e, subprocess.CalledProcessError)
+                        and e.returncode == EXIT_CHANNEL_UNVERIFIED):
+                    print(f"✗ アップロード先のチャンネルを確認できませんでした"
+                          f"（{cand['id']}）。どの題材でも同じ理由で失敗するため"
+                          f"日次実行を中止します。原因と対処は直前に "
+                          f"upload_youtube.py が出したメッセージを見てください"
+                          f"（token.json は消さないこと）", file=sys.stderr)
+                    aborted = True
+                    break
+
                 if (isinstance(e, subprocess.CalledProcessError)
                         and e.returncode == EXIT_CHANNEL_MISMATCH):
                     print(f"✗ アップロード先のチャンネルが指定と一致しません"

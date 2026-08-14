@@ -56,6 +56,19 @@ SCOPES = [
 # 失敗するので、次の候補に進んでも全候補ぶん同じ失敗を繰り返すだけになる。
 EXIT_CHANNEL_MISMATCH = 3
 
+# チャンネルを**確認できなかった**ときの終了コード。取り違え（3）とは分ける。
+#
+# 実測 2026-08-14: YouTube Data API の1日あたりのクォータを使い切った状態
+# （403 quotaExceeded）で channels.list が落ち、current_channel が None を
+# 返した結果、取り違えガードが「実際: 取得できず」として発動した。表示された
+# 対処は「token.json を削除して認証し直す」で、**正常なトークンを捨てさせる**
+# うえにクォータは1つも回復しない。しかも run_daily.py 側はこれを
+# 「token.json が別チャンネルに紐づいている」と報告して中止する。
+#
+# 「別のチャンネルだった」と「確認できなかった」は別の事実で、対処も違う
+# （前者は認証のやり直し、後者は待つか通信を直す）。終了コードで分ける。
+EXIT_CHANNEL_UNVERIFIED = 4
+
 
 def die(msg: str, code: int = 1) -> None:
     print(f"✗ {msg}", file=sys.stderr)
@@ -91,15 +104,43 @@ def get_service():
     return build("youtube", "v3", credentials=creds)
 
 
+def _is_quota_error(e) -> bool:
+    """その HttpError がクォータ超過か。
+
+    理由はレスポンスの `reason` に入る。`str(HttpError)` に載るかどうかは
+    レスポンスの形（message があるか）と googleapiclient のバージョン次第で
+    変わるので、構造化された `error_details` を先に見る。
+    """
+    details = getattr(e, "error_details", None) or []
+    if any(isinstance(d, dict) and d.get("reason") == "quotaExceeded"
+           for d in details):
+        return True
+    return "quotaExceeded" in str(e)
+
+
 def current_channel(service) -> dict | None:
-    """いま認証しているトークンがどのチャンネルに紐づくかを返す。"""
+    """いま認証しているトークンがどのチャンネルに紐づくかを返す。
+
+    **確認そのものができなかったときは None を返さずここで止める**
+    （EXIT_CHANNEL_UNVERIFIED）。None で返していたときは、取り違えガードが
+    それを「別のチャンネル」と同じ扱いにして token.json の削除を促していた。
+    None を返すのは「認証は通ったが、そのアカウントにチャンネルが1つも無い」
+    ときだけにする。
+    """
     from googleapiclient.errors import HttpError
     try:
         items = service.channels().list(
             part="snippet", mine=True).execute().get("items", [])
     except HttpError as e:
-        print(f"! チャンネルを確認できませんでした: {e}")
-        return None
+        hint = ""
+        if _is_quota_error(e):
+            hint = ("\n  YouTube Data API の1日ぶんのクォータを使い切っています"
+                    "（太平洋時間の0時＝JSTの16:00〜17:00にリセット）。"
+                    f"\n  {TOKEN.name} は正常です。消さないこと。"
+                    "\n  リセット後に同じコマンドをもう一度実行してください。")
+        die(f"チャンネルを確認できませんでした。"
+            f"取り違えかどうかも判定できないためアップロードしません: {e}{hint}",
+            code=EXIT_CHANNEL_UNVERIFIED)
     return {"id": items[0]["id"], "title": items[0]["snippet"]["title"]} if items else None
 
 
@@ -115,7 +156,10 @@ def assert_expected_channel(service, meta: dict) -> dict | None:
             "取り違えを防げないのでアップロードしません",
             code=EXIT_CHANNEL_MISMATCH)
     if ch is None or ch["id"] != expected:
-        got = f"{ch['title']}（{ch['id']}）" if ch else "取得できず"
+        # ch が None なのは「認証は通ったがチャンネルが1つも無い」ときだけ。
+        # 確認できなかった場合は current_channel が別の終了コードで止めている。
+        got = (f"{ch['title']}（{ch['id']}）" if ch
+               else "このアカウントにチャンネルが1つもありません")
         die("アップロード先のチャンネルが指定と一致しません。\n"
             f"  期待: {expected}\n"
             f"  実際: {got}\n"
