@@ -383,6 +383,56 @@ def test_limitが0以下なら受け付けない(tmp_path, monkeypatch):
         run_daily.main()
 
 
+def test_onlyで指定した候補だけを対象にする(tmp_path, monkeypatch, capsys):
+    """--only ID は候補を1件に絞る。**採用ゲートは素通りしない。**
+
+    採用ゲートは「検索語が同じ文脈に2語以上固まって現れるか」しか見ていない
+    ので、見出しと無関係な答弁が採用可のまま候補順で先頭に来る日がある
+    （実測 2026-08-14: 「福岡県が職員を守る条例」の見出しに憲法審査会の
+    同性婚の答弁が付いた）。yield_report.py で人が中身を見て題材を選んだ
+    ときに、その1件だけを同じ経路で通せるようにする。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    slots = [SLOT_MORNING]
+    monkeypatch.setattr(run_daily, "pending_slots", lambda now, days_ahead=0: slots)
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    cands = [_candidate("a"), _candidate("b")]
+    _write_candidates(cands, work)
+    for c in cands:
+        _prepare_photo(work / c["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--only", "b"])
+
+    run_daily.main()
+
+    assert "本日 1/1 本" in capsys.readouterr().out
+    seen = json.loads((state / "seen.json").read_text(encoding="utf-8"))
+    assert seen == ["b"]                       # 先頭の a は飛ばす
+
+
+def test_onlyで指定したIDが候補に無ければ中止する(tmp_path, monkeypatch, capsys):
+    """指定が外れたまま黙って進むと、人が選んだのとは別の題材を作ってしまう。
+
+    候補IDは見出しから決まるので、RSSの再取得で対象が入れ替わっていると
+    起こりうる。「0本でした」で終わらせず、外れたことをその場で言う。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    _write_candidates([_candidate("a")], work)
+    _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--only", "zzz"])
+
+    with pytest.raises(SystemExit) as e:
+        run_daily.main()
+
+    assert e.value.code == 1
+    assert "zzz" in capsys.readouterr().err
+
+
 def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]

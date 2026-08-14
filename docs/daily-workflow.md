@@ -70,6 +70,22 @@ python scripts/run_daily.py --days-ahead 1
 python scripts/run_daily.py --days-ahead 1 --limit 1
 ```
 
+**題材を人が選ぶときは `--only` を付ける。** 採用ゲートは「検索語が同じ文脈に
+2語以上固まって現れるか」しか見ていないので、**見出しと無関係な答弁が
+採用可のまま候補順の先頭に来る日がある**（`docs/known-issues.md` 5番・5-b番）。
+`yield_report.py` で中身を見て選んだ1件だけを、同じ経路で通せる:
+
+```bash
+python scripts/yield_report.py --refresh   # 候補と落ちた理由を見る
+python scripts/run_daily.py --only <候補ID> --days-ahead 3 --limit 1
+```
+
+**ゲートは素通りしない。** 絞るのは候補だけで、一次資料・画像・引用の検証も
+重複除外も `state/*.json` の更新もそのまま全部かかる。指定したIDが候補に
+無ければ（RSSの再取得で入れ替わったなど）0本で静かに終わらせず、その場で
+中止して終了コード1を返す。候補IDは `yield_report.py --refresh` が書く
+`work/candidates.json` の `id`。
+
 **手で起動する運用。** その時点の残り枠の数だけ作り、07:30 / 18:30 の予約公開に
 載せて終わる。PC が日中落ちていても YouTube 側が定刻に公開する。
 1日3回（06:00/12:00/16:00）の自動起動にしたい場合は末尾

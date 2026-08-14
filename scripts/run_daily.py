@@ -288,6 +288,9 @@ def main() -> None:
                     help="何日先の枠に載せるか（1で翌日の朝・夕の2枠）")
     ap.add_argument("--limit", type=int, default=None, metavar="N",
                     help="先頭からN枠だけ埋める（1枠ぶんだけ作り直したいとき）")
+    ap.add_argument("--only", metavar="ID", default=None,
+                    help="この候補IDだけを対象にする"
+                         "（yield_report.py で中身を見て人が題材を選んだとき）")
     a = ap.parse_args()
     if a.limit is not None and a.limit < 1:
         # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
@@ -353,6 +356,24 @@ def main() -> None:
               "RSSの取得か seen.json による除外を確認してください",
               file=sys.stderr)
         sys.exit(1)
+
+    if a.only:
+        # 採用ゲート（evidence.collect）は「検索語が同じ文脈に2語以上固まって
+        # 現れるか」しか見ておらず、見出しと無関係な答弁が採用可のまま候補順の
+        # 先頭に来る日がある。yield_report.py で中身を見て人が題材を選んだとき、
+        # その1件だけを**同じ経路**で通せるようにする（ゲートは素通りしない。
+        # 絞るのは候補だけで、根拠・画像・引用の検証はそのまま全部かかる）。
+        picked = [c for c in candidates if c["id"] == a.only]
+        if not picked:
+            # 黙って0件で進むと、人が選んだのとは別の題材が作られるか、
+            # 「本日 0/1 本」とだけ出て指定が外れたことに気づけない。
+            print(f"✗ --only {a.only} に一致する候補がありません"
+                  f"（候補{len(candidates)}件）。候補IDは見出しから決まるので、"
+                  f"RSSの再取得で入れ替わった可能性があります。"
+                  f"python scripts/yield_report.py --refresh で取り直してください",
+                  file=sys.stderr)
+            sys.exit(1)
+        candidates = picked
 
     seen = set(json.loads(SEEN.read_text(encoding="utf-8"))
                if SEEN.exists() else [])

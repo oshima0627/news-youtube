@@ -143,11 +143,23 @@ RETRY_ATTEMPTS = 3          # 初回 + リトライ2回
 RETRY_BACKOFF_SECONDS = 1.0  # 1秒 → 2秒 の指数バックオフ
 
 
+# 各会議録の先頭に入っている「会議録情報」レコードの目印。
+# 中身は開会時刻と出席者名簿（委員・国務大臣・政府参考人の氏名と役職）で、
+# **発言ではない**。にもかかわらず2,000字近くあり、議員名・役職名・
+# 「異動」「要求」等の語を大量に含むため、find_passage の近接判定を
+# いくらでも通してしまう（実測: 「福岡 議員 要求」で採用可12件が全部これで、
+# 引用として切り出されたのは厚生労働委員会の出席者名簿だった）。
+# 採用すると**出席者名簿に一次資料の出典キャプションが付いた引用カード**が出る。
+SPEECH_ORDER_MEETING_INFO = 0
+SPEAKER_MEETING_INFO = "会議録情報"
+
+
 def parse_speeches(payload: dict) -> list[Evidence]:
     """国会会議録APIの応答を Evidence に変換する。
 
     「次に。」のような進行発言が大量に混ざるので、
     根拠になる長さの無いものはここで落とす。
+    会議録の先頭にある出席者名簿（会議録情報）も発言ではないので落とす。
     """
     out: list[Evidence] = []
     records = payload.get("speechRecord") or []
@@ -155,6 +167,11 @@ def parse_speeches(payload: dict) -> list[Evidence]:
         # 繰り返し要素が1件のとき、配列ではなくオブジェクト単体で返ってくる実装があるためのガード
         records = [records]
     for rec in records:
+        # speechOrder が欠けている応答を 0 と同一視しない（`not rec.get(...)`
+        # と書くと、speechOrder を返さない実装で発言が丸ごと消える）。
+        if (rec.get("speechOrder") == SPEECH_ORDER_MEETING_INFO
+                or rec.get("speaker") == SPEAKER_MEETING_INFO):
+            continue
         quote = (rec.get("speech") or "").strip()
         if len(quote) < MIN_QUOTE_CHARS:
             continue
