@@ -86,6 +86,22 @@ python scripts/run_daily.py --only <候補ID> --days-ahead 3 --limit 1
 中止して終了コード1を返す。候補IDは `yield_report.py --refresh` が書く
 `work/candidates.json` の `id`。
 
+**21位以下を選んだときは `--candidates` で母数を合わせる。** `run_daily.py` は
+実行のたびに `collect_news.py` を呼び直すので、既定（20件）のままだと
+21位以下のIDは「候補にありません」で止まる。`yield_report.py` を広い母数で
+見たなら、同じ数を渡すこと:
+
+```bash
+python scripts/collect_news.py --limit 45      # 母数を広げて候補を書き出す
+python scripts/yield_report.py                 # --refresh は付けない（20件に戻る）
+python scripts/run_daily.py --only <候補ID> --candidates 45 --days-ahead 1 --limit 1
+```
+
+増えるのは**照会する見出しの数**だけで、採用ゲートは変わらない。上位20件は
+その日のRSSの当たり外れに左右されるので、噛み合う題材が上位に無い日でも
+下位から拾える（実測 2026-08-17: 門番を通った45件のうち採用ゲートを通ったのは
+12件で、見出しと引用が噛み合う題材4件はすべて21位以下だった）。
+
 **手で起動する運用。** その時点の残り枠の数だけ作り、07:30 / 18:30 の予約公開に
 載せて終わる。PC が日中落ちていても YouTube 側が定刻に公開する。
 1日3回（06:00/12:00/16:00）の自動起動にしたい場合は末尾

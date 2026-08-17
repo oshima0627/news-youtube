@@ -294,6 +294,9 @@ def main() -> None:
     ap.add_argument("--only", metavar="ID", default=None,
                     help="この候補IDだけを対象にする"
                          "（yield_report.py で中身を見て人が題材を選んだとき）")
+    ap.add_argument("--candidates", type=int, default=20, metavar="N",
+                    help="RSSから取り直す候補の件数（既定20）。"
+                         "--only で21位以下の題材を選んだときに広げる")
     a = ap.parse_args()
     if a.limit is not None and a.limit < 1:
         # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
@@ -337,7 +340,7 @@ def main() -> None:
     # 「本日 0/2 本」と表示して終了コード0で終わり、原因に気づけない。
     try:
         subprocess.run([sys.executable, "scripts/collect_news.py",
-                        "--limit", "20"], check=True, cwd=ROOT)
+                        "--limit", str(a.candidates)], check=True, cwd=ROOT)
     except subprocess.CalledProcessError as e:
         # EXIT_NO_TOPIC は「フィードは取れたが、国会で議論されえない題材
         # （天気・スポーツ）と既出を除いたら何も残らなかった」。環境は
