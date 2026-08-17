@@ -115,5 +115,41 @@
       "首相",
       "高市"
     ]
+  },
+  {
+    "date": "2026-08-17",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122105253X00220260602/5",
+    "keywords": [
+      "サミット",
+      "中学生",
+      "拉致"
+    ]
+  },
+  {
+    "date": "2026-08-17",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121905261X00420251111/139",
+    "keywords": [
+      "広島",
+      "長崎",
+      "高市"
+    ]
+  },
+  {
+    "date": "2026-08-17",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122113950X00720260512/62",
+    "keywords": [
+      "安保",
+      "文書",
+      "有識者"
+    ]
+  },
+  {
+    "date": "2026-08-17",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122104260X00620260422/279",
+    "keywords": [
+      "マイナ",
+      "介護",
+      "保険"
+    ]
   }
 ]
