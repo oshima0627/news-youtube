@@ -433,6 +433,59 @@ def test_onlyで指定したIDが候補に無ければ中止する(tmp_path, mon
     assert "zzz" in capsys.readouterr().err
 
 
+def test_取り直す候補の件数を指定できる(tmp_path, monkeypatch):
+    """`--only` で人が選べる範囲を、RSSの上位20件より下まで広げる。
+
+    `--only` は「人が中身を見て選んだ1件を同じ経路で通す」ためにあるが、
+    run_daily は実行のたびに collect_news.py を `--limit 20` で呼び直すので、
+    **21位以下の題材は指定してもその場で「候補にありません」で止まる**。
+
+    実測（2026-08-17）: 門番を通った見出しは45件あり、そのうち採用ゲートを
+    通ったのは12件。上位20件に限ると、見出しと引用が噛み合う題材は
+    その日すでに使った1件だけで、21位以下に4件残っていた。母数を選べないと、
+    人が選ぶ経路そのものが上位20件の当たり外れに縛られる。
+
+    採用ゲートは素通りしない。増えるのは**照会する見出しの数**だけ。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    cand = _candidate("a")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--candidates", "45"])
+
+    run_daily.main()
+
+    collect = [c for c in fake_run.calls
+               if any("collect_news.py" in str(x) for x in c)]
+    assert len(collect) == 1
+    assert collect[0][-2:] == ["--limit", "45"]
+
+
+def test_候補の件数を指定しなければ20件のまま(tmp_path, monkeypatch):
+    """既定を変えない。定例実行（1日3回）の挙動は今までどおり。"""
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    cand = _candidate("a")
+    _write_candidates([cand], work)
+    _prepare_photo(work / cand["id"])
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["run_daily.py"])
+
+    run_daily.main()
+
+    collect = [c for c in fake_run.calls
+               if any("collect_news.py" in str(x) for x in c)]
+    assert collect[0][-2:] == ["--limit", "20"]
+
+
 def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
