@@ -187,6 +187,26 @@
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kokkai.ndl.go.jp/txt/121903968X00220251128/10",
       "publish_at": "2026-08-21T07:30:00+09:00"
+    },
+    "1405e44d769c": {
+      "youtube_video_id": "XuHs_x6lHSI",
+      "url": "https://www.youtube.com/watch?v=XuHs_x6lHSI",
+      "title": "国会で読み上げられた「福岡九区支部」の証言　2000万円は振り込まれていない",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121605261X00120241205/288",
+      "publish_at": "2026-08-20T07:30:00+09:00"
+    },
+    "e9744267b439": {
+      "youtube_video_id": "Ql_ylXmaqBM",
+      "url": "https://www.youtube.com/watch?v=Ql_ylXmaqBM",
+      "title": "「足下の一致指数は横ばい」国会で問われた景気動向指数と経済対策",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121204889X00220231108/169",
+      "publish_at": "2026-08-20T18:30:00+09:00"
     }
   }
 }
