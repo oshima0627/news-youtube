@@ -69,6 +69,7 @@ from scripts.script_writer import (  # noqa: E402
     write,
 )
 from scripts.slots import pending_slots  # noqa: E402
+from scripts.sources import make_id  # noqa: E402
 from scripts.upload_youtube import (  # noqa: E402
     EXIT_CHANNEL_MISMATCH,
     EXIT_CHANNEL_UNVERIFIED,
@@ -294,6 +295,9 @@ def main() -> None:
     ap.add_argument("--only", metavar="ID", default=None,
                     help="この候補IDだけを対象にする"
                          "（yield_report.py で中身を見て人が題材を選んだとき）")
+    ap.add_argument("--keyword", metavar="検索語", default=None,
+                    help="RSSを使わず、この検索語で一次資料を引いて題材にする"
+                         "（空白区切りのAND検索。国会会議録を直接掘るとき）")
     ap.add_argument("--candidates", type=int, default=20, metavar="N",
                     help="RSSから取り直す候補の件数（既定20）。"
                          "--only で21位以下の題材を選んだときに広げる")
@@ -302,6 +306,11 @@ def main() -> None:
         # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
         # 実際とは違う理由を表示して終わる。
         ap.error("--limit は1以上を指定してください")
+    if a.keyword and a.only:
+        # 黙ってどちらかを優先すると、人が選んだつもりの題材とは違うものが
+        # 作られるか、RSSを引く必要のない実行がRSSの停止に巻き込まれる。
+        ap.error("--keyword と --only は同時に指定できません"
+                 "（どちらも題材の選び方を決める引数です）")
 
     # empty_streak の判定に使う「今日」。EXIT_NO_TOPIC 分岐（早期return）と
     # 通常終了時の両方から _bump_empty_streak を呼ぶため、ここで一度だけ
@@ -334,52 +343,69 @@ def main() -> None:
         return
     print(f"- 本日の残り枠: {[s.strftime('%H:%M') for s in slots]}")
 
-    # collect_news.py は「全フィードが失敗」「候補0件」を非0終了で知らせる
-    # （evidence.collect() の EvidenceSourcesUnavailable と同じ扱い）。
-    # ここで握りつぶすと、ネットワークが落ちている日に候補0件のまま
-    # 「本日 0/2 本」と表示して終了コード0で終わり、原因に気づけない。
-    try:
-        subprocess.run([sys.executable, "scripts/collect_news.py",
-                        "--limit", str(a.candidates)], check=True, cwd=ROOT)
-    except subprocess.CalledProcessError as e:
-        # EXIT_NO_TOPIC は「フィードは取れたが、国会で議論されえない題材
-        # （天気・スポーツ）と既出を除いたら何も残らなかった」。環境は
-        # 正常なので中止せず、0本の日として静かに終える。
-        if e.returncode == EXIT_NO_TOPIC:
-            print("本日 0/{} 本（採れる題材がありませんでした）".format(len(slots)))
-            _bump_empty_streak(0, today)
-            return
-        print(f"✗ 候補の収集に失敗しました。RSSの取得元に接続できないなど"
-              f"環境不備の可能性が高いため日次実行を中止します"
-              f"（終了コード {e.returncode}）", file=sys.stderr)
-        sys.exit(1)
+    if a.keyword:
+        # 見出し（RSS）を起点にしない経路。採用ゲートは「検索語が同じ文脈に
+        # 2語以上固まって現れるか」しか見ておらず、見出しに後から根拠を当てに
+        # 行く形だと噛み合わない動画が出続ける（known-issues 5番・5-b番）。
+        # 検索語から直接一次資料を引けば、噛み合わないという状態が無くなる。
+        #
+        # RSSは引かない。NHKのRSSが9日間更新されない事象が実際に起きており
+        # （2026-08-18 実測、lastBuildDate が 8/9 のまま）、collect_news.py を
+        # 通す限り題材はその静止したプールからしか出てこない。
+        #
+        # 題材名には検索語をそのまま使う。ここに人が書いた見出しを入れると、
+        # 一次資料に無い出来事を台本の前提にしてしまう（画面の根拠カードは
+        # 逐語引用で検証されるが、ナレーションは検証されない）。
+        candidates = [{"id": make_id(a.keyword), "title": a.keyword,
+                       "keyword": a.keyword, "category": "政治"}]
+        print(f"- 検索語から題材を作ります（RSSは使いません）: {a.keyword}")
+    else:
+        # collect_news.py は「全フィードが失敗」「候補0件」を非0終了で知らせる
+        # （evidence.collect() の EvidenceSourcesUnavailable と同じ扱い）。
+        # ここで握りつぶすと、ネットワークが落ちている日に候補0件のまま
+        # 「本日 0/2 本」と表示して終了コード0で終わり、原因に気づけない。
+        try:
+            subprocess.run([sys.executable, "scripts/collect_news.py",
+                            "--limit", str(a.candidates)], check=True, cwd=ROOT)
+        except subprocess.CalledProcessError as e:
+            # EXIT_NO_TOPIC は「フィードは取れたが、国会で議論されえない題材
+            # （天気・スポーツ）と既出を除いたら何も残らなかった」。環境は
+            # 正常なので中止せず、0本の日として静かに終える。
+            if e.returncode == EXIT_NO_TOPIC:
+                print("本日 0/{} 本（採れる題材がありませんでした）".format(len(slots)))
+                _bump_empty_streak(0, today)
+                return
+            print(f"✗ 候補の収集に失敗しました。RSSの取得元に接続できないなど"
+                  f"環境不備の可能性が高いため日次実行を中止します"
+                  f"（終了コード {e.returncode}）", file=sys.stderr)
+            sys.exit(1)
 
-    candidates = json.loads(CANDIDATES.read_text(encoding="utf-8"))
-    if not candidates:
-        # collect_news.py 側でも弾いているが、work/candidates.json を手で
-        # 用意する運用もあるので入口側でも確認する。
-        print(f"✗ 候補が1件もありません（{CANDIDATES}）。"
-              "RSSの取得か seen.json による除外を確認してください",
-              file=sys.stderr)
-        sys.exit(1)
-
-    if a.only:
-        # 採用ゲート（evidence.collect）は「検索語が同じ文脈に2語以上固まって
-        # 現れるか」しか見ておらず、見出しと無関係な答弁が採用可のまま候補順の
-        # 先頭に来る日がある。yield_report.py で中身を見て人が題材を選んだとき、
-        # その1件だけを**同じ経路**で通せるようにする（ゲートは素通りしない。
-        # 絞るのは候補だけで、根拠・画像・引用の検証はそのまま全部かかる）。
-        picked = [c for c in candidates if c["id"] == a.only]
-        if not picked:
-            # 黙って0件で進むと、人が選んだのとは別の題材が作られるか、
-            # 「本日 0/1 本」とだけ出て指定が外れたことに気づけない。
-            print(f"✗ --only {a.only} に一致する候補がありません"
-                  f"（候補{len(candidates)}件）。候補IDは見出しから決まるので、"
-                  f"RSSの再取得で入れ替わった可能性があります。"
-                  f"python scripts/yield_report.py --refresh で取り直してください",
+        candidates = json.loads(CANDIDATES.read_text(encoding="utf-8"))
+        if not candidates:
+            # collect_news.py 側でも弾いているが、work/candidates.json を手で
+            # 用意する運用もあるので入口側でも確認する。
+            print(f"✗ 候補が1件もありません（{CANDIDATES}）。"
+                  "RSSの取得か seen.json による除外を確認してください",
                   file=sys.stderr)
             sys.exit(1)
-        candidates = picked
+
+        if a.only:
+            # 採用ゲート（evidence.collect）は「検索語が同じ文脈に2語以上固まって
+            # 現れるか」しか見ておらず、見出しと無関係な答弁が採用可のまま候補順の
+            # 先頭に来る日がある。yield_report.py で中身を見て人が題材を選んだとき、
+            # その1件だけを**同じ経路**で通せるようにする（ゲートは素通りしない。
+            # 絞るのは候補だけで、根拠・画像・引用の検証はそのまま全部かかる）。
+            picked = [c for c in candidates if c["id"] == a.only]
+            if not picked:
+                # 黙って0件で進むと、人が選んだのとは別の題材が作られるか、
+                # 「本日 0/1 本」とだけ出て指定が外れたことに気づけない。
+                print(f"✗ --only {a.only} に一致する候補がありません"
+                      f"（候補{len(candidates)}件）。候補IDは見出しから決まるので、"
+                      f"RSSの再取得で入れ替わった可能性があります。"
+                      f"python scripts/yield_report.py --refresh で取り直してください",
+                      file=sys.stderr)
+                sys.exit(1)
+            candidates = picked
 
     seen = set(json.loads(SEEN.read_text(encoding="utf-8"))
                if SEEN.exists() else [])
