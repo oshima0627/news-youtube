@@ -36,6 +36,7 @@ from pathlib import Path
 import pytest
 
 from scripts import run_daily
+from scripts.sources import make_id
 from scripts.evidence import Evidence, EvidenceSourcesUnavailable
 from scripts.script_writer import Script, ScriptGenerationRejected, ScriptWriterUnavailable
 
@@ -521,6 +522,33 @@ def test_keywordならRSSを使わずに検索語だけで1本作れる(tmp_path
     assert len(written) == 1
     recipe = json.loads(written[0].read_text(encoding="utf-8"))
     assert recipe["keyword"] == "空き家 住宅 対策"
+
+
+def test_すでに作った題材はkeywordで指定しても作り直さない(tmp_path, monkeypatch, capsys):
+    """既出の除外は collect_news.py（RSS側）が持っていて、--keyword はそこを
+    通らない。塞がないと、同じ検索語をもう一度渡しただけで**同じ動画が
+    もう1本アップロードされる**（upload_youtube.py に重複防止は無い）。
+
+    実際に穴が開いた状態で1本作っている（2026-08-18、`2bff28f8a7d7`）。
+    予約だけがクォータ超過で落ちたため、その題材は seen に入ったまま
+    used には入らず、再実行すれば重複投稿になる状態だった。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+    (state / "seen.json").write_text(
+        json.dumps([make_id("空き家 住宅 対策")]), encoding="utf-8")
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策"])
+
+    run_daily.main()
+
+    out = capsys.readouterr().out
+    assert "本日 0/1 本" in out
+    assert not fake_run.upload_calls()
 
 
 def test_keywordとonlyは同時に指定できない(tmp_path, monkeypatch, capsys):
