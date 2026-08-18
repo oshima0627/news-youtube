@@ -486,6 +486,65 @@ def test_候補の件数を指定しなければ20件のまま(tmp_path, monkeyp
     assert collect[0][-2:] == ["--limit", "20"]
 
 
+def test_keywordならRSSを使わずに検索語だけで1本作れる(tmp_path, monkeypatch, capsys):
+    """見出し起点をやめ、**発言起点**でも題材を通せるようにする。
+
+    採用ゲートは関連性を判定していないので、RSSの見出しに後から根拠を
+    当てに行く形だと「見出しと引用が噛み合わない」動画が出続ける
+    （`docs/known-issues.md` 5番・5-b番）。検索語から直接一次資料を引けば、
+    噛み合わないという状態そのものが無くなる。
+
+    RSSが止まっていても作れることも同時に要る。実測 2026-08-18: NHKの
+    RSS（cat0/cat4）が8月9日から再構築されておらず、候補プールが9日間
+    固定されていた。collect_news.py を通る限り、題材はその静止した
+    プールから出てこない。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    fake_run = _mock_success_path(monkeypatch)
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策"])
+
+    run_daily.main()
+
+    assert "本日 1/1 本" in capsys.readouterr().out
+    # RSSは引かない（work/candidates.json も読まない）
+    assert not [c for c in fake_run.calls
+                if any("collect_news.py" in str(x) for x in c)]
+    assert len(fake_run.schedule_calls()) == 1
+
+    # レシピは検索語から組み立てられている（再現の単位として残る）
+    written = list(recipes.glob("*.json"))
+    assert len(written) == 1
+    recipe = json.loads(written[0].read_text(encoding="utf-8"))
+    assert recipe["keyword"] == "空き家 住宅 対策"
+
+
+def test_keywordとonlyは同時に指定できない(tmp_path, monkeypatch, capsys):
+    """どちらも題材の選び方を決める引数なので、両方渡されたら意図が定まらない。
+
+    黙ってどちらかを優先すると、人が選んだつもりの題材とは違うものが
+    作られる（--only を無視した場合）か、RSSを引く必要のない実行で
+    RSSの停止に巻き込まれる（--keyword を無視した場合）。
+    """
+    _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策",
+                         "--only", "abc123"])
+
+    with pytest.raises(SystemExit) as e:
+        run_daily.main()
+
+    assert e.value.code == 2
+    # 「未知の引数」ではなく、両立しないことを名指しで言う
+    err = capsys.readouterr().err
+    assert "--keyword" in err and "--only" in err
+    assert "unrecognized" not in err
+
+
 def test_投稿が成功した題材だけseenに入る(tmp_path, monkeypatch):
     work, recipes, state = _setup_paths(tmp_path, monkeypatch)
     slots = [SLOT_MORNING, SLOT_EVENING]
