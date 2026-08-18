@@ -445,6 +445,15 @@ def main() -> None:
             # 5xx が1回混ざっただけでその日が0本＋exit 1 になってしまう
             # （search_speeches 側でもリトライしている）。連続 N 件失敗した
             # ときだけ「本当に落ちている」と判断して中止に格上げする。
+            # 既出の除外は collect_news.py（RSS側）が持っていたが、
+            # --keyword はそこを通らない。**全経路が通るこの位置**に置く
+            # （CLAUDE.md「関門は1つにして、全経路がそれを通る形にする」）。
+            # 塞がないと、同じ検索語をもう一度渡しただけで同じ動画がもう1本
+            # アップロードされる（upload_youtube.py に重複防止は無い）。
+            if cand["id"] in seen:
+                print(f"- 見送り（すでに作成済み）: {cand['title'][:32]}")
+                continue
+
             words = set(cand["keyword"].split())
             if any(len(words & used) >= SAME_TOPIC_OVERLAP
                    for used in used_keywords):
