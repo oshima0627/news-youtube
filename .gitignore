@@ -2,6 +2,11 @@
 client_secret.json
 token.json
 .env
+# 別名のコピーが .gitignore をすり抜けて自動コミットに載った
+# （2026-08-19: token.json.bgm-shared.bak / client_secret.json.bgm-shared.bak）
+*.bak
+client_secret.json.*
+token.json.*
 
 # 中間生成物（再取得できるものは持たない）
 work/
