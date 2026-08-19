@@ -273,6 +273,27 @@
   ```
   `published.json` の記録を使うので `videos.insert` は走らない（50ユニット）。
 
+## 11. worktree で走らせるとアップロードだけが落ちる
+
+**2026-08-19 に発生。** `.claude/worktrees/<name>/` で
+`run_daily.py --keyword ...` を回したところ、台本・音声・動画までは
+できたのに `upload_youtube.py` が `✗ client_secret.json がありません。`
+で終了コード1を返した。`client_secret.json` と `token.json` は
+`.gitignore` 済み＝**リポジトリ本体のチェックアウトにしか無い**ので、
+worktree には最初から存在しない。
+
+**run_daily はこれを「題材固有の失敗」として扱う。** アップロードの
+失敗は候補を飛ばすだけなので、終了コードは0で「本日 0/1 本」とだけ出る。
+**環境不備なのに中止にならない**ため、気づかないと Anthropic API の
+課金と VOICEVOX の時間を1本ぶん捨てたまま先に進む（実際に捨てた）。
+
+対処は、worktree のルートに2ファイルを置いてから走らせること
+（`.gitignore` は worktree でも効くのでコミットには乗らない）:
+
+```bash
+cp client_secret.json token.json .claude/worktrees/<name>/
+```
+
 ## 未検証項目（稼働前に必ず確認）
 
 ### P0 — これが通るまで無人実行を有効にしない
