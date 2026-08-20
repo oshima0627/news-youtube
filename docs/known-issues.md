@@ -340,9 +340,11 @@ cp client_secret.json token.json .claude/worktrees/<name>/
 **チェックアウト（worktree・ブランチ）ごとにこのファイルの写しが分かれる**と
 関門そのものが分裂する。8番の修正では防げない形。
 
-**対処（実施済み）**: 3つの state ファイル（published / used / seen）を
-両ブランチの和集合にマージして main に戻した。二重の5枠の解消
-（後着5本を 8/25 07:30 以降へ移す等）は人の判断待ち。
+**対処（実施済み・解消確認済み）**: 3つの state ファイル（published / used / seen）を
+両ブランチの和集合にマージして main に戻した。二重の5枠は、人の指示で
+後着5本を YouTube Studio 上で 8/25 07:30〜8/27 07:30 へ移して解消した
+（2026-08-20。Studio の一覧で各枠1本に戻ったことを確認し、
+`published.json` の `publish_at` も追随させた）。
 
 **予防**: チャンネルを動かす操作（アップロード・予約・unpublish）は、
 main を取り込んで state が最新であることを確かめてから行う。
