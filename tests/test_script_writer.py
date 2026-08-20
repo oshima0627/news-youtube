@@ -237,3 +237,73 @@ def test_正常時はScriptインスタンスが返る(monkeypatch):
 
     assert isinstance(got, Script)
     assert got.title == parsed.title
+
+
+# ── 長尺のパート ─────────────────────────────────────────────
+
+def test_パートの字数指定は長尺の尺の窓に収まる():
+    """ショートと同じ理由（test_字数指定は尺の許容範囲に収まる）で縛る。
+
+    パートの字数指定と、build_long が narrate に渡す窓が別々に動くと、
+    毎パート再合成に入って実行時間が倍になる。
+    """
+    from scripts.build_long import SEGMENT_TARGET_MAX, SEGMENT_TARGET_MIN
+
+    assert (script_writer.SEGMENT_MIN_CHARS
+            * narrate.SECONDS_PER_CHAR) >= SEGMENT_TARGET_MIN
+    assert (script_writer.SEGMENT_MAX_CHARS
+            * narrate.SECONDS_PER_CHAR) <= SEGMENT_TARGET_MAX
+
+
+def test_パートのプロンプトとスキーマに同じ字数指定が載る():
+    from scripts.script_writer import SegmentScript, build_segment_prompt
+    span = f"{script_writer.SEGMENT_MIN_CHARS}〜{script_writer.SEGMENT_MAX_CHARS}字"
+
+    assert span in build_segment_prompt(RECIPE)
+    assert span in SegmentScript.model_fields["narration"].description
+
+
+def test_パートのプロンプトは逐語での抜き出しを求める():
+    # 引用カードに出るのはこの一節そのもの。言い換えられると、一次資料の
+    # 出典キャプションが付いた文字列が一次資料と一致しなくなる。
+    from scripts.script_writer import build_segment_prompt
+    prompt = build_segment_prompt(RECIPE)
+
+    assert "そのまま" in prompt
+    assert RECIPE["evidence"]["quote"] in prompt
+
+
+# ── 導入と結び（モデルを使わない）─────────────────────────────
+
+def test_導入は各題材の見出しだけを読み上げる():
+    """導入・結びは一次資料に紐づかないので、**モデルに書かせない。**
+
+    プロンプトで「事実を書くな」と頼む形にすると、守られたかどうかを
+    確かめる手段が無い（ナレーションは検証されない）。見出しを差し込む
+    定型文にすれば、そもそも新しい事実が入る余地が構造的に無い。
+    """
+    from scripts.script_writer import intro_narration
+    text = intro_narration(["アイウ", "エオカ", "キクケ"])
+
+    assert "アイウ" in text and "エオカ" in text and "キクケ" in text
+
+
+def test_導入と結びの字数は窓に収まる():
+    from scripts.build_long import (INTRO_TARGET_MAX, INTRO_TARGET_MIN,
+                                    OUTRO_TARGET_MAX, OUTRO_TARGET_MIN)
+    from scripts.script_writer import intro_narration, outro_narration
+
+    intro = len(intro_narration(["あ" * 20] * 3)) * narrate.SECONDS_PER_CHAR
+    outro = len(outro_narration()) * narrate.SECONDS_PER_CHAR
+
+    assert INTRO_TARGET_MIN <= intro <= INTRO_TARGET_MAX
+    assert OUTRO_TARGET_MIN <= outro <= OUTRO_TARGET_MAX
+
+
+def test_短い見出しでも導入は窓に収まる():
+    from scripts.build_long import INTRO_TARGET_MAX, INTRO_TARGET_MIN
+    from scripts.script_writer import intro_narration
+
+    intro = len(intro_narration(["アイ", "ウエ", "オカ"])) * narrate.SECONDS_PER_CHAR
+
+    assert INTRO_TARGET_MIN <= intro <= INTRO_TARGET_MAX

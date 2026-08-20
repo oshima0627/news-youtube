@@ -224,8 +224,11 @@ def query_duration(query: dict) -> float:
     return total / speed
 
 
-def fit_speed(query: dict) -> float:
-    """尺を目標中央値(58.5秒)に合わせる speedScale。可動域に収める。
+def fit_speed(query: dict, target_mid: float = TARGET_MID) -> float:
+    """尺を目標中央値（既定は58.5秒）に合わせる speedScale。可動域に収める。
+
+    `target_mid` は長尺のパート（75秒前後）でも同じ計算を使うための引数。
+    既定値はショートの中央値のままなので、既存の呼び出しは変わらない。
 
     基準にするのは **speedScale=1.0 で読んだときの尺**。`_synthesize_once` は
     求めた値を絶対値として上書きするので、query が既に持っている speedScale
@@ -236,7 +239,7 @@ def fit_speed(query: dict) -> float:
     base = query_duration({**query, "speedScale": 1.0})
     if base <= 0:
         return 1.0
-    return max(SPEED_MIN, min(SPEED_MAX, base / TARGET_MID))
+    return max(SPEED_MIN, min(SPEED_MAX, base / target_mid))
 
 
 def _synthesize_once(query: dict, sid: int, speed_scale: float, dest: Path) -> float:
@@ -260,8 +263,15 @@ def _synthesize_once(query: dict, sid: int, speed_scale: float, dest: Path) -> f
     return wav_duration_seconds(dest)
 
 
-def synthesize(text: str, dest: Path) -> Path:
+def synthesize(text: str, dest: Path, *,
+               target_min: float = TARGET_MIN,
+               target_max: float = TARGET_MAX) -> Path:
     """text を読み上げた wav を dest に書く。
+
+    `target_min` / `target_max` は許容する実尺の窓。既定はショートの
+    56〜61秒で、長尺のパート（75秒前後・導入は12秒前後）は呼び出し側が
+    渡す。窓を固定したままだと長尺では毎回「範囲外」の警告が出て、
+    本物の異常（無音・合成失敗）がその警告に埋もれる。
 
     無人実行なので、尺が56〜61秒の許容範囲から外れたまま気づかずに
     投稿されると、ensure_engine() が防いでいる「無音動画を無自覚に
@@ -278,15 +288,22 @@ def synthesize(text: str, dest: Path) -> Path:
          数秒尺がずれた動画を出すより1本を落とすほうが損失が大きい。
          ただし気づけないと同じ問題を繰り返すため、必ず警告を出す。
     """
+    if target_min > target_max:
+        # 取り違えたまま走ると、どの実尺でも「範囲外」になって毎回
+        # 再合成する（本番尺で数分の空費）。その場で止める。
+        raise ValueError(
+            f"尺の窓の指定が逆です: target_min={target_min} > target_max={target_max}")
+
+    target_mid = (target_min + target_max) / 2
     ensure_engine()
     sid = _speaker_id()
 
     query = fetch_query(text, sid)
-    speed = fit_speed(query)
+    speed = fit_speed(query, target_mid)
     duration = 0.0
     for attempt in range(1, MAX_RETRIES + 2):  # 初回 + 最大 MAX_RETRIES 回の再試行
         duration = _synthesize_once(query, sid, speed, dest)
-        in_range = TARGET_MIN <= duration <= TARGET_MAX
+        in_range = target_min <= duration <= target_max
         print(f"- 試行{attempt}: speedScale={speed:.3f} → 実尺{duration:.2f}秒"
               f"{'（許容範囲内）' if in_range else ''}")
         if in_range:
@@ -294,13 +311,14 @@ def synthesize(text: str, dest: Path) -> Path:
             return dest
         if attempt == MAX_RETRIES + 1:
             break
-        new_speed = speed * (duration / TARGET_MID)
+        new_speed = speed * (duration / target_mid)
         new_speed = max(SPEED_MIN, min(SPEED_MAX, new_speed))
-        print(f"  56〜61秒の範囲外のため speedScale を "
+        print(f"  {target_min:.0f}〜{target_max:.0f}秒の範囲外のため speedScale を "
               f"{speed:.3f} → {new_speed:.3f} に補正して再合成します")
         speed = new_speed
 
-    print(f"! 警告: {MAX_RETRIES}回再試行しても尺が56〜61秒に収まりませんでした"
+    print(f"! 警告: {MAX_RETRIES}回再試行しても尺が"
+          f"{target_min:.0f}〜{target_max:.0f}秒に収まりませんでした"
           f"（実尺{duration:.2f}秒, speedScale={speed:.3f}）。"
           "この結果のまま採用します（収益化条件＝90日3本以上を優先し、"
           "1本落とすより尺が多少ずれる方を選ぶ）。要確認。")

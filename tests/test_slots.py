@@ -63,3 +63,38 @@ def test_翌日指定でも過ぎた枠は返さない():
     got = pending_slots(datetime(2026, 8, 13, 12, 0), days_ahead=0)
 
     assert [s.strftime("%H:%M") for s in got] == ["18:30"]
+
+
+# ── 長尺の枠（1日1本・18:00）─────────────────────────────────
+
+def test_長尺の枠は18時ちょうどの1つだけ返る():
+    got = pending_slots(datetime(2026, 8, 20, 10, 0, tzinfo=JST), kind="long")
+    assert got == [datetime(2026, 8, 20, 18, 0, tzinfo=JST)]
+
+
+def test_既定はショートのままで長尺の枠は混ざらない():
+    # 既存の呼び出し（run_daily.py）は kind を渡さない。長尺の枠が
+    # 混ざるとショートが 18:00 に載り、1日1本という長尺の約束も崩れる。
+    got = pending_slots(datetime(2026, 8, 20, 6, 0, tzinfo=JST))
+    assert got == [datetime(2026, 8, 20, 7, 30, tzinfo=JST),
+                   datetime(2026, 8, 20, 18, 30, tzinfo=JST)]
+
+
+def test_長尺も過ぎた枠は遡らない():
+    assert pending_slots(datetime(2026, 8, 20, 18, 0, tzinfo=JST),
+                         kind="long") == []
+
+
+def test_長尺も翌日ぶんを先に作れる():
+    got = pending_slots(datetime(2026, 8, 20, 20, 0, tzinfo=JST),
+                        days_ahead=1, kind="long")
+    assert [s.strftime("%m-%d %H:%M") for s in got] == ["08-21 18:00"]
+
+
+def test_知らない種別は取り違えずに落とす():
+    # 綴り間違い（"longform" 等）を黙って空リストにすると、その日は
+    # 何も作らずに正常終了する。0本の理由が枠の綴りだったと後から
+    # 気づけないので、その場で止める。
+    import pytest
+    with pytest.raises(ValueError):
+        pending_slots(datetime(2026, 8, 20, 10, 0, tzinfo=JST), kind="longform")

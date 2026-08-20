@@ -264,3 +264,59 @@ def test_ensure_engine_応答済みなら何もせず即returnする(monkeypatch
     narrate.ensure_engine()
 
     assert calls["get"] == 1
+
+
+# ── 長尺のパート（尺の窓を呼び出し側が決める）────────────────────
+
+def test_長尺のパートは別の尺の窓で合成できる(monkeypatch, tmp_path):
+    """長尺は 56〜61秒ではない。窓を引数で渡せる。
+
+    ショートの窓に固定したままだと、75秒前後のパートを合成するたびに
+    「範囲外です」の警告が出て、本物の異常（無音・合成失敗）が
+    その警告に埋もれる。
+    """
+    speeds = []
+
+    def _fake_once(q, sid, speed, dest):
+        speeds.append(speed)
+        return narrate.query_duration(q) / speed
+
+    monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
+    monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    # 750モーラ＝75.2秒ぶん。長尺のパート（約430字）はこの程度の長さになる。
+    # 短い本文を渡すと speedScale が可動域（0.85〜1.35）に張り付いて窓に
+    # 入らないので、窓に見合う長さの本文で確かめる。
+    monkeypatch.setattr(narrate, "fetch_query", lambda text, sid: _query(750))
+    monkeypatch.setattr(narrate, "_synthesize_once", _fake_once)
+    monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
+
+    narrate.synthesize("本文", tmp_path / "voice.wav",
+                       target_min=70.0, target_max=80.0)
+
+    assert len(speeds) == 1
+    assert speeds[0] == pytest.approx(narrate.query_duration(_query(750)) / 75.0)
+
+
+def test_長尺の窓に収まっていれば警告を出さない(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
+    monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+    monkeypatch.setattr(narrate, "fetch_query", lambda text, sid: _query(500))
+    monkeypatch.setattr(narrate, "_synthesize_once",
+                        lambda q, sid, speed, dest: 75.0)
+    monkeypatch.setattr(narrate, "_write_segments", lambda *a: None)
+
+    narrate.synthesize("本文", tmp_path / "voice.wav",
+                       target_min=70.0, target_max=80.0)
+
+    assert "警告" not in capsys.readouterr().out
+
+
+def test_窓の指定が逆なら落とす(monkeypatch, tmp_path):
+    # 上限と下限を取り違えたまま走ると、どの実尺でも「範囲外」になって
+    # 毎回 MAX_RETRIES 回合成し直す（本番尺で数分の空費）。その場で止める。
+    monkeypatch.setattr(narrate, "ensure_engine", lambda: None)
+    monkeypatch.setattr(narrate, "_speaker_id", lambda: 13)
+
+    with pytest.raises(ValueError):
+        narrate.synthesize("本文", tmp_path / "voice.wav",
+                           target_min=80.0, target_max=70.0)
