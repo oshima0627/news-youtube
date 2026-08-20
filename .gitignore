@@ -1,6 +1,13 @@
 # 認証情報
 client_secret.json
 token.json
+# 認証情報のバックアップ。2026-08-19 の自動コミットが
+# client_secret.json.bgm-shared.bak / token.json.bgm-shared.bak を拾い、
+# GitHub のシークレット保護に push を止められた（中身は本物の OAuth 情報）。
+# 拡張子を足しただけの名前が上の2行をすり抜けるので、パターンで塞ぐ。
+*.bak
+client_secret.json.*
+token.json.*
 .env
 
 # 中間生成物（再取得できるものは持たない）
