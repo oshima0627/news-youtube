@@ -61,6 +61,10 @@ python scripts/fetch_photo.py work/<id> <画像URL>              # URLを直接�
 
 ## パイプライン
 
+動画は2種類ある。**ショート**（縦1080x1920・約60秒・1題材）は `run_daily.py`、
+**長尺**（横1920x1080・約4分・3題材を章で束ねる）は `run_long.py` で作る。
+枠はショートが 07:30 / 18:30、長尺が 18:00 で分けてある（`slots.py`）。
+
 `run_daily.py` を1回起動するだけで、その時点の残り枠の数だけ作り、
 YouTube側の予約公開に載せて終了する。PC が日中落ちていても定刻に公開される。
 
@@ -84,6 +88,20 @@ run_daily.py
 （環境不備と題材固有の失敗を例外の型で見分けるため）。
 `verify_source.py` / `write_script.py` / `fetch_photo.py` は同じ処理を
 手で1件ずつ確認するための単体CLIとして残してある。
+
+長尺は同じ部品を使いつつ、題材を**人が選ぶ**ところだけが違う:
+
+```
+run_long.py --only <ID> --only <ID> --only <ID>
+  └─ 題材ごとに evidence.collect() → commons.resolve() → script_writer.write_segment()
+  ├─ 導入・結びは定型文（モデルに書かせない。一次資料に紐づかないパートなので）
+  ├─ narrate.synthesize()  パートごとに合成（尺の窓は呼び出し側が渡す）
+  ├─ build_long.build()    1920x1080 に組み、音声を連結して1本にする
+  └─ upload_youtube.py     private → --schedule で 18:00 予約
+```
+
+設計と、引き受けたリスク（長尺は量産型ポリシーに当たる危険がショートより高い）は
+[`docs/superpowers/specs/2026-08-20-long-form-design.md`](docs/superpowers/specs/2026-08-20-long-form-design.md)。
 
 公開後に問題が判明したら `scripts/unpublish.py <video_id>` で即座に戻す。
 

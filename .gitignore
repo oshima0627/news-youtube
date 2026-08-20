@@ -9,6 +9,7 @@ work/
 *.wav
 
 run_daily.log
+run_long.log
 
 __pycache__/
 *.pyc

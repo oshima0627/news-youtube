@@ -39,7 +39,8 @@
 ```bash
 pytest                                        # 全テスト
 python scripts/run_daily.py --dry-run         # 投稿せず1周（ネットワークとVOICEVOXは使う）
-python scripts/run_daily.py --limit 1         # 1本だけ作って予約投稿
+python scripts/run_daily.py --limit 1         # ショート1本を作って予約投稿
+python scripts/run_long.py --only A --only B --only C   # 長尺1本（3題材・18:00枠）
 python scripts/yield_report.py                # 採用ゲートの歩留まりを見る
 python scripts/relevance_eval.py              # 見出しと引用の関連性を独立に採点（要API認証）
 python scripts/unpublish.py <video_id>        # 公開後の事故を即座に戻す
@@ -57,6 +58,22 @@ python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
 - **アップロード直後の `videos.list` は `tags` や `status.publishAt` が欠けて返ることがある。**
   予約が外れたと判断する前に必ず引き直すか YouTube Studio を見る。
   **理由**: ここで `unpublish.py` → 作り直しに走ると、無事な動画を1本捨てる。
+
+## 長尺（16:9・約4分）
+
+2026-08-20 に追加。**3題材を章で束ねたまとめ形式**で、1日1本を JST 18:00 に出す
+（ショートの枠 07:30 / 18:30 とは別枠）。設計は
+[`docs/superpowers/specs/2026-08-20-long-form-design.md`](docs/superpowers/specs/2026-08-20-long-form-design.md)。
+
+- **題材は人が選ぶ**（`--only` / `--keyword` が必須）。採用ゲートは関連性を
+  判定しないので、候補の先頭から機械的に採ると噛み合わない題材が入る。
+  3題材を束ねる長尺では、その被害が1本あたり3倍になる。
+- 引用カードの関門は同じ（`compose_segment` の `quote` はキーワード必須引数）。
+- **導入と結びはモデルに書かせない。** 一次資料に紐づかないパートなので、
+  各章の見出しを差し込む定型文（`script_writer.intro_narration`）にしてある。
+  プロンプトで「事実を書くな」と頼む形だと、守られたか確かめる手段が無い。
+- 章（チャプター）は各10秒以上でないと YouTube 側で無効になる。尺の窓の下限
+  （`build_long.INTRO_TARGET_MIN` 等）がその条件を満たすようテストで縛ってある。
 
 ## 未解決：採用ゲートは関連性を判定していない
 
