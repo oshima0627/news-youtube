@@ -15,7 +15,7 @@ work/
 *.mp4
 *.wav
 
-run_daily.log
+run_daily*.log
 run_long.log
 
 __pycache__/
