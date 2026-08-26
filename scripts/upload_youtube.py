@@ -77,6 +77,7 @@ def die(msg: str, code: int = 1) -> None:
 
 def get_service():
     try:
+        from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -89,7 +90,20 @@ def get_service():
     if TOKEN.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN), SCOPES)
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError as e:
+            # 失効・取り消し済みのリフレッシュトークンは refresh では戻らない
+            # （known-issues 14番）。ここで例外のまま止めると、復旧手段が
+            # 「token.json を手で消す」しか無くなり、9番の「クォータ超過では
+            # 消すな」と見分けが付かなくなる。**理由を出してから**同意画面へ落とす。
+            # RefreshError は認可サーバに拒否されたときだけで、通信不能は
+            # TransportError、クォータ超過は API 呼び出し側の HttpError なので、
+            # ここで握るのは「認可が無効」だけに限られる。
+            reason = e.args[0] if e.args else e
+            print(f"! {TOKEN.name} が使えません: {reason}")
+            print("  リフレッシュトークンが失効しているので、同意画面をやり直します。")
+            creds = None
     if not creds or not creds.valid:
         if not CLIENT_SECRET.exists():
             die(f"{CLIENT_SECRET.name} がありません。\n"

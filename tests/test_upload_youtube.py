@@ -321,3 +321,96 @@ def test_set_privacyは動画が見つからないときは終了する():
 
     with pytest.raises(SystemExit):
         uy.set_privacy(_S(), "missing_vid", "public")
+
+
+# --- token.json が失効しているときの経路 -------------------------------------
+#
+# 2026-08-26 に、失効した token.json を持ったまま `--auth-only` を叩くと
+# `creds.refresh()` が RefreshError を投げて、**その下の同意画面フローに
+# 落ちてこない**ことが分かった（known-issues 14番）。復旧手段が
+# 「token.json を手で消す」しか無くなるうえ、9番の「消すな」という指示と
+# 見分けが付かない。失効は refresh では戻らないので、同意画面へ落とす。
+
+
+class _DeadCreds:
+    """refresh すると RefreshError を投げる、失効済みトークンの代わり。"""
+
+    expired = True
+    refresh_token = "dead"
+    valid = False
+
+    def __init__(self, exc):
+        self._exc = exc
+        self.refresh_called = 0
+
+    def refresh(self, request):
+        self.refresh_called += 1
+        raise self._exc
+
+
+class _LiveCreds:
+    expired = False
+    refresh_token = "live"
+    valid = True
+
+    def to_json(self):
+        return '{"token": "new"}'
+
+
+def _patch_google(monkeypatch, tmp_path, creds_from_file, flow_result):
+    """get_service が関数内で import する google 系を差し替える。
+
+    実物のモジュールに monkeypatch を当てる（未導入の環境では importorskip
+    でスキップする）。戻り値は「同意画面フローが何回呼ばれたか」を数えるリスト。
+    """
+    credentials = pytest.importorskip("google.oauth2.credentials")
+    flow_mod = pytest.importorskip("google_auth_oauthlib.flow")
+    discovery = pytest.importorskip("googleapiclient.discovery")
+
+    token = tmp_path / "token.json"
+    token.write_text("{}", encoding="utf-8")
+    secret = tmp_path / "client_secret.json"
+    secret.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(uy, "TOKEN", token)
+    monkeypatch.setattr(uy, "CLIENT_SECRET", secret)
+
+    monkeypatch.setattr(credentials.Credentials, "from_authorized_user_file",
+                        staticmethod(lambda *a, **k: creds_from_file))
+
+    flow_calls = []
+
+    class _FakeFlow:
+        def run_local_server(self, port):
+            flow_calls.append(port)
+            return flow_result
+
+    monkeypatch.setattr(flow_mod.InstalledAppFlow, "from_client_secrets_file",
+                        staticmethod(lambda *a, **k: _FakeFlow()))
+    monkeypatch.setattr(discovery, "build", lambda *a, **k: "service")
+    return flow_calls, token
+
+
+def test_失効したtokenは同意画面をやり直す(monkeypatch, tmp_path, capsys):
+    exceptions = pytest.importorskip("google.auth.exceptions")
+    dead = _DeadCreds(exceptions.RefreshError(
+        "invalid_grant: Token has been expired or revoked.",
+        {"error": "invalid_grant"}))
+    flow_calls, token = _patch_google(monkeypatch, tmp_path, dead, _LiveCreds())
+
+    assert uy.get_service() == "service"
+
+    assert dead.refresh_called == 1
+    assert len(flow_calls) == 1, "同意画面フローに落ちていない"
+    assert token.read_text(encoding="utf-8") == '{"token": "new"}'
+    # なぜやり直したのかが画面に出ていないと、9番（クォータ超過）と区別できない
+    out = capsys.readouterr().out
+    assert "invalid_grant" in out
+
+
+def test_生きているtokenは同意画面をやり直さない(monkeypatch, tmp_path):
+    live = _LiveCreds()
+    flow_calls, _ = _patch_google(monkeypatch, tmp_path, live, _LiveCreds())
+
+    assert uy.get_service() == "service"
+
+    assert flow_calls == [], "生きているトークンで同意画面を開いている"

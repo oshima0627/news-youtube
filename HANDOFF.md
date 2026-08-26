@@ -111,8 +111,8 @@ google.auth.exceptions.RefreshError:
 ## 次にやること
 
 1. **認証を戻す。** ブラウザの同意画面が要るので、人が対話的に実行する。
-   その前に known-issues 14番の選択肢1（同意画面を「本番」にする）を先に済ませないと、
-   再認証しても7日後に同じことが起きる。
+   その前に known-issues 14番の選択肢1（Google Cloud Console で同意画面を「本番」に
+   する）を先に済ませないと、**再認証しても7日後に同じことが起きる**。
 
    ```bash
    python scripts/upload_youtube.py --auth-only
@@ -128,6 +128,24 @@ google.auth.exceptions.RefreshError:
 
 4. 長尺（18:00枠）を続けるかを決める。1本目が0再生なので、
    続けるなら「なぜ0なのか」を測ってから。判断材料が無いまま本数だけ増やさない。
+
+## 今回やったこと（追記：2026-08-26 の同一セッション）
+
+調査後、人が `--auth-only` を叩いたところ**同じ traceback で落ちた**ので、原因を追った。
+
+- `get_service()` は `creds.refresh()` の例外でそのまま抜けるため、**すぐ下の
+  同意画面フロー（`run_local_server`）に落ちてこない**。つまり
+  `--auth-only` では失効を復旧できない状態だった。
+- `RefreshError` を握って理由を表示してから同意画面へ落とすように
+  [`scripts/upload_youtube.py`](scripts/upload_youtube.py) を修正した。
+  握るのは `RefreshError` だけなので、通信不能とクォータ超過は今までどおり素通し。
+- 先にテストを書いて落ちることを確認してから直した（`tests/test_upload_youtube.py`）:
+  - `test_失効したtokenは同意画面をやり直す`
+  - `test_生きているtokenは同意画面をやり直さない`
+- **`pytest` 414 passed**（全件・実出力）。
+- 副作用: 無人実行中に失効するとブラウザ待ちで**止まる**（以前は即クラッシュ）。
+  `token.json` が無いときの挙動は元からこれなので新しい穴ではない。
+- **実際の再認証はまだ通っていない**（同意画面はオーナー操作なので実行していない）。
 
 ## 触ってはいけないところ
 
