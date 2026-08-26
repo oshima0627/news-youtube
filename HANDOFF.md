@@ -12,9 +12,11 @@
 
 1. **チャンネルは正常に動いている。** 8/26 07:30 まで途切れなく公開され、
    8/30 07:30 までの予約8本も YouTube 側で正しく入っている（API で実測）。
-2. **リポジトリ直下の `token.json` が死んでいる**（`invalid_grant`）。
-   新規アップロード・予約・`unpublish.py` が今は通らない。
-   詳細と対処は `docs/known-issues.md` **14番**。
+2. `token.json` が `invalid_grant` で死んでいた → **同日中に復旧済み**。
+   `--auth-only` が同意画面に落ちてこない不具合も直した。
+   詳細は `docs/known-issues.md` **14番**。
+   **ただし同意画面の公開ステータスは未確認で、「テスト中」のままなら
+   2026-09-02 ごろにまた失効する。**
 
 ## 今回やったこと
 
@@ -102,7 +104,10 @@ google.auth.exceptions.RefreshError:
 ## 未検証のもの
 
 - **Google Cloud Console の同意画面の公開ステータス**（「テスト中」か「本番」か）。
-  7日失効の説明はこれで整合するが、Console を見ていないので**推定**。
+  7日失効の説明はこれで整合するが、Console を見ていないので**推定のまま**。
+  **切り替えていなければ 2026-09-02 ごろに再び `invalid_grant` になる。**
+  確認先: Google Cloud Console → プロジェクト（`639758631694-…` の方）→
+  「API とサービス」→「OAuth 同意画面」→ 公開ステータス。
 - 予約8本の「見出しと引用が噛み合っているか」の**人手**確認。
   8/20 のセッションで AI の下見はしているが、人は見ていない。
 - 長尺が0再生である理由（サムネイル・題材・アルゴリズム）は調べていない。
@@ -110,9 +115,9 @@ google.auth.exceptions.RefreshError:
 
 ## 次にやること
 
-1. **認証を戻す。** ブラウザの同意画面が要るので、人が対話的に実行する。
-   その前に known-issues 14番の選択肢1（Google Cloud Console で同意画面を「本番」に
-   する）を先に済ませないと、**再認証しても7日後に同じことが起きる**。
+1. **同意画面が「テスト中」なら「本番」に切り替える**（Console 側・未確認）。
+   切り替えないと 2026-09-02 ごろにまた失効する。
+   失効したときの復旧はこれで通る（消さなくてよい）:
 
    ```bash
    python scripts/upload_youtube.py --auth-only
@@ -145,7 +150,27 @@ google.auth.exceptions.RefreshError:
 - **`pytest` 414 passed**（全件・実出力）。
 - 副作用: 無人実行中に失効するとブラウザ待ちで**止まる**（以前は即クラッシュ）。
   `token.json` が無いときの挙動は元からこれなので新しい穴ではない。
-- **実際の再認証はまだ通っていない**（同意画面はオーナー操作なので実行していない）。
+### 認証の復旧（2026-08-26 13:08 JST・実測）
+
+人が直下で `--auth-only` を実行し、**復旧した**。画面に出た出力:
+
+```
+! token.json が使えません: invalid_grant: Token has been expired or revoked.
+  リフレッシュトークンが失効しているので、同意画面をやり直します。
+Please visit this URL to authorize this application: https://accounts.google.com/o/oauth2/auth?...client_id=639758631694-...
+✓ 認証情報を保存しました: token.json（コミットしないこと）
+✓ 認証しました: 日本の最新ニュースまるわかり（UCYHTfHJOoETzvpx-VZlUTng）
+```
+
+- 修正が効いて**同意画面まで到達した**（`token.json` を消さずに復旧できた）。
+- 再認証したのは**同じ2つ目のクライアント** `639758631694-…`＝クォータ分離は維持されている。
+- その後もう一度 `--auth-only` を叩き、**同意画面なしで**
+  `✓ 認証しました: 日本の最新ニュースまるわかり（UCYHTfHJOoETzvpx-VZlUTng）`
+  を確認した（＝リフレッシュが効いている）。
+- known-issues 11番に従い、`token.json` / `client_secret.json` を
+  `research-and-video-ede9c9` worktree にもコピーし、そちらでも `--auth-only` の
+  成功を確認した。**`video-content-research-60a976` worktree は古いクライアント
+  （`393077911026-…`）のまま**にしてある（生きているので触っていない）。
 
 ## 触ってはいけないところ
 
