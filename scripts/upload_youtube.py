@@ -75,7 +75,14 @@ def die(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
-def get_service():
+def get_credentials():
+    """OAuth の認証情報を1箇所で解決する。
+
+    `get_service()`（YouTube Data API）と `retention_report.py`
+    （YouTube Analytics API）が同じトークン・同じ SCOPES・同じ失効時の
+    復旧手順を通るようにするため、ここに寄せてある。認証の解決が2箇所に
+    あると、片方だけが失効時の同意画面へ落ちるといった食い違いが起きる。
+    """
     try:
         from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
@@ -115,7 +122,13 @@ def get_service():
         TOKEN.write_text(creds.to_json(), encoding="utf-8")
         print(f"✓ 認証情報を保存しました: {TOKEN.name}（コミットしないこと）")
 
-    return build("youtube", "v3", credentials=creds)
+    return creds
+
+
+def get_service():
+    from googleapiclient.discovery import build
+
+    return build("youtube", "v3", credentials=get_credentials())
 
 
 def _is_quota_error(e) -> bool:
