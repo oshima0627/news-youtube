@@ -1,6 +1,6 @@
 # HANDOFF
 
-最終更新: 2026-08-27（セッション: `--script` 追加 → 9/1 まで枠を埋め、流入元と視聴維持率を実測した）
+最終更新: 2026-08-27（セッション: `--script` 追加 → 9/1 まで枠を埋め、流入元と視聴維持率を実測し、1本を公開に戻した）
 
 ## いま何をしているのか
 
@@ -55,7 +55,7 @@ python scripts/run_daily.py --keyword "防衛費 国内総生産" --script <台�
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 431 passed**（`--script` と `retention_report.py` の追加後）。
+- **`pytest` 435 passed**（`--script` / `retention_report.py` / `--publish-id` の追加後）。
 - **5本とも予約が通った。API で引き直して確認した**（アップロード直後は欠けて返るため）:
 
   ```
@@ -83,6 +83,15 @@ python scripts/run_daily.py --keyword "防衛費 国内総生産" --script <台�
   教員・漏えい＝**発言者の写真が無く汎用の国会議事堂画像**（設計どおりのフォールバック）。
 - **テロップのはみ出しは5本とも0**（測定して確定。ビザの初回ビルドでは
   `1978年以来値上げされていない」。` が1140px＝画面外に出ていたので書き換えた）。
+- **`zC8OJmUT9Us` を公開に戻した**（2026-08-27、本人の指示）。実行と確認:
+
+  ```
+  python scripts/upload_youtube.py --publish-id zC8OJmUT9Us
+  ✓ 公開しました: https://www.youtube.com/watch?v=zC8OJmUT9Us
+  → API で引き直し: privacyStatus=public / viewCount 1147 / likeCount 4
+  → published.json も privacy_status=public に更新済み（手では触っていない）
+  ```
+
 - **チャンネルは生きている**: `viewCount 1,325,814 / subscriberCount 2,880 /
   videoCount 198`、`isChannelMonetizationEnabled: false`。
 ### 長尺と視聴維持率の実測（2026-08-27、`retention_report.py` の出力）
@@ -139,7 +148,6 @@ python scripts/run_daily.py --keyword "防衛費 国内総生産" --script <台�
 - **新しい3本には「関連動画」を設定していない。** 長尺への導線は38本張っても
   2再生だったので、費用対効果が見えるまで手作業を増やさない判断。
 - `8ebRhoO41tM`（本日18:30に再公開）の経緯は推測のまま。本人の判断でそのままにした。
-- `zC8OJmUT9Us` は private・予約なし・1,147再生。戻すか消すか未決。
 - **テロップの禁則処理は直していない。** `draw.wrap()` は行頭禁則で行が幅を
   超えることを許しており、`」` `。` が続くと画面外に出る。既存448行のうち1行
   （公開済みの `work/b3f6f9e5cd12`）が同じ状態。**別タスクとして切り出してある。**
