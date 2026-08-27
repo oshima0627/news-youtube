@@ -414,3 +414,92 @@ def test_生きているtokenは同意画面をやり直さない(monkeypatch, t
     assert uy.get_service() == "service"
 
     assert flow_calls == [], "生きているトークンで同意画面を開いている"
+
+
+# ── --publish-id（workdir が残っていない動画を公開に戻す） ──────────
+#
+# work/ を掃除したあとの動画は `upload_youtube.py <workdir> --publish` を
+# 使えない（meta.json が無い）。かといって state/published.json を手で
+# 直すのは禁止（CLAUDE.md）。video_id を入口にして、記録の更新まで
+# 同じ経路を通す。
+
+import json  # noqa: E402
+
+
+def _published(tmp_path, entries: dict):
+    path = tmp_path / "published.json"
+    path.write_text(json.dumps({"videos": entries}, ensure_ascii=False),
+                    encoding="utf-8")
+    return path
+
+
+def _entry(video_id: str, channel_id: str = EXPECTED_ID, privacy: str = "private",
+           publish_at: str | None = None) -> dict:
+    e = {"youtube_video_id": video_id,
+         "url": f"https://www.youtube.com/watch?v={video_id}",
+         "title": "記録済みの動画", "privacy_status": privacy,
+         "channel_id": channel_id}
+    if publish_at:
+        e["publish_at"] = publish_at
+    return e
+
+
+def _run_publish_id(monkeypatch, tmp_path, entries, video_id, items=None):
+    """--publish-id の経路だけを動かす。認証とAPIはモックする。"""
+    path = _published(tmp_path, entries)
+    monkeypatch.setattr(uy, "PUBLISHED", path)
+    monkeypatch.setattr(uy, "get_service",
+                        lambda: _FakeService(items if items is not None
+                                             else [_channel_item(EXPECTED_ID, EXPECTED_TITLE)]))
+    calls = []
+    monkeypatch.setattr(uy, "set_privacy",
+                        lambda service, vid, privacy, publish_at=None:
+                        calls.append((vid, privacy, publish_at)))
+    monkeypatch.setattr("sys.argv", ["upload_youtube.py", "--publish-id", video_id])
+    uy.main()
+    return calls, json.loads(path.read_text(encoding="utf-8"))["videos"]
+
+
+def test_publish_idで記録済みの動画を公開に戻せる(monkeypatch, tmp_path, capsys):
+    calls, videos = _run_publish_id(
+        monkeypatch, tmp_path, {"rec1": _entry("vid123")}, "vid123")
+
+    assert calls == [("vid123", "public", None)]
+    assert videos["rec1"]["privacy_status"] == "public"
+    assert "公開しました" in capsys.readouterr().out
+
+
+def test_publish_idは予約の記録も落とす(monkeypatch, tmp_path):
+    """publish_at を残したままだと、予約が生きているように読める。
+    即時公開したのだから、その枠の記録は持たない。
+    """
+    _, videos = _run_publish_id(
+        monkeypatch, tmp_path,
+        {"rec1": _entry("vid123", publish_at="2026-09-09T07:30:00+09:00")},
+        "vid123")
+
+    assert "publish_at" not in videos["rec1"]
+
+
+def test_publish_idは記録に無い動画を触らない(monkeypatch, tmp_path, capsys):
+    """記録に無い動画＝このパイプラインが作ったものではない。
+    チャンネルには手作りの古い動画が150本以上あるので、取り違えると
+    無関係な動画の公開設定を変えることになる。
+    """
+    with pytest.raises(SystemExit) as e:
+        _run_publish_id(monkeypatch, tmp_path, {"rec1": _entry("vid123")}, "よその動画")
+
+    assert e.value.code == 1
+    assert "記録にありません" in capsys.readouterr().err
+
+
+def test_publish_idは記録と別のチャンネルなら止まる(monkeypatch, tmp_path, capsys):
+    """認証しているチャンネルと、記録に残っているチャンネルが違う状態。
+    アップロード側と同じ終了コードで止める。
+    """
+    with pytest.raises(SystemExit) as e:
+        _run_publish_id(monkeypatch, tmp_path,
+                        {"rec1": _entry("vid123", channel_id="UCそのほか")}, "vid123")
+
+    assert e.value.code == uy.EXIT_CHANNEL_MISMATCH
+    assert "一致しません" in capsys.readouterr().err

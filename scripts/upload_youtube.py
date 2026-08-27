@@ -291,6 +291,47 @@ def record(meta: dict, video_id: str, privacy: str, ch: dict | None,
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def publish_by_id(service, video_id: str) -> None:
+    """video_id を入口に、記録済みの動画を公開へ切り替える。
+
+    `work/<id>` を掃除したあとの動画は `<workdir> --publish` を使えない
+    （meta.json が無い）。かといって `state/published.json` を手で直すのは
+    禁止しているので（重複投稿・二重予約の防止がこのファイルだけに依存する）、
+    **記録の更新まで同じ経路を通す**入口をここに置く。
+
+    対象は `state/published.json` に記録がある動画だけに限る。チャンネルには
+    パイプライン産でない古い動画が150本以上あり、取り違えるとそちらの公開設定を
+    変えてしまう。チャンネルの一致も、記録に残した channel_id で確かめる
+    （アップロード側と同じ終了コードで止める）。
+    """
+    data = load_published()
+    found = [(key, entry) for key, entry in data["videos"].items()
+             if entry.get("youtube_video_id") == video_id]
+    if not found:
+        die(f"{video_id} は {PUBLISHED.name} の記録にありません。"
+            "このパイプラインが作った動画ではない可能性があります")
+    key, entry = found[0]
+
+    ch = current_channel(service)
+    expected = entry.get("channel_id")
+    if expected and (ch is None or ch["id"] != expected):
+        got = f"{ch['title']}（{ch['id']}）" if ch else "チャンネルがありません"
+        die("認証しているチャンネルが、記録に残っているチャンネルと一致しません。\n"
+            f"  記録: {expected}\n  実際: {got}",
+            code=EXIT_CHANNEL_MISMATCH)
+    if ch:
+        print(f"- チャンネル: {ch['title']}（{ch['id']}）")
+
+    set_privacy(service, video_id, "public")
+    entry["privacy_status"] = "public"
+    # 即時公開したので、予約の記録は持たない（残すと予約が生きているように読める）
+    entry.pop("publish_at", None)
+    data["videos"][key] = entry
+    PUBLISHED.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"✓ 公開しました: {entry.get('url') or video_id}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("workdir", type=Path, nargs="?",
@@ -299,12 +340,18 @@ def main() -> None:
                     help="認証だけ通して token.json を作る")
     ap.add_argument("--publish", action="store_true",
                     help="アップロード済みの動画を公開に切り替える")
+    ap.add_argument("--publish-id", metavar="VIDEO_ID", default=None,
+                    help="workdir が残っていない動画を、video_id を指定して"
+                         "公開に切り替える（state/published.json に記録がある動画だけ）")
     ap.add_argument("--schedule", metavar="ISO8601",
                     help="即時公開せず、指定時刻に自動公開する予約を入れる"
                          "（例: 2026-08-11T03:00:00Z。JSTなら+09:00を付ける）")
     a = ap.parse_args()
 
     service = get_service()
+    if a.publish_id:
+        publish_by_id(service, a.publish_id)
+        return
     if a.auth_only:
         ch = current_channel(service)
         print(f"✓ 認証しました: {ch['title']}（{ch['id']}）" if ch else "✓ 認証しました")
