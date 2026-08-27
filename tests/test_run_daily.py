@@ -1619,3 +1619,121 @@ def test_古い記録は重複判定から外れる(tmp_path, monkeypatch, capsy
     run_daily.main()
 
     assert "本日 1/1 本" in capsys.readouterr().out
+
+
+# ── --script（人が書いた台本を使う） ──────────────────────────────
+#
+# Anthropic API の認証が無い環境でも1本作れるようにする経路。
+# モデルに書かせる代わりに、人（または対話セッション）が書いた文章を渡す。
+
+
+def _hand_written(tmp_path: Path, keyword: str, **overrides) -> Path:
+    data = {
+        "source_url": _evidence_for(keyword).source_url,
+        "title": "人が書いたタイトル",
+        "headline": "見出し",
+        "narration": "人が書いたナレーション。" * 10,
+        "subtitle": "字幕に出す要点",
+        "quote_excerpt": "十二文字以上ある逐語引用",
+        "figure_label": "件数",
+        "figure_value": "1件",
+        "tags": ["政治", "国会"],
+    }
+    data.update(overrides)
+    path = tmp_path / "hand.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_scriptを渡すと台本生成を呼ばずにその文章で作る(tmp_path, monkeypatch, capsys):
+    """ANTHROPIC の認証が無くても1本通せる経路。
+
+    採用ゲート（evidence.collect）も引用カードの検証も従来どおり通る。
+    変わるのは Script の作り手だけ。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    fake_run = _mock_success_path(monkeypatch)
+
+    def _boom(recipe):
+        raise AssertionError("--script のときは write() を呼んではいけない")
+
+    monkeypatch.setattr(run_daily, "write", _boom)
+    path = _hand_written(tmp_path, "空き家 住宅 対策")
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策",
+                         "--script", str(path)])
+
+    run_daily.main()
+
+    assert "本日 1/1 本" in capsys.readouterr().out
+    assert len(fake_run.schedule_calls()) == 1
+    written = json.loads(
+        (work / make_id("空き家 住宅 対策") / "script.json").read_text(encoding="utf-8"))
+    assert written["title"] == "人が書いたタイトル"
+    # source_url は突き合わせ用の宣言なので Script には残さない
+    assert "source_url" not in written
+
+
+def test_scriptの出典が今回の一次資料と違えば中止する(tmp_path, monkeypatch, capsys):
+    """1つの台本は1つの発言に対して書かれている。当たった発言が違えば、
+    出典キャプションと原稿の中身が食い違った動画になる。**題材を飛ばして
+    次に進むのではなく、その場で止める**（次の題材でも同じ理由で失敗する）。
+    """
+    work, recipes, state = _setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(run_daily, "pending_slots",
+                        lambda now, days_ahead=0: [SLOT_MORNING])
+    _freeze_now(monkeypatch, BEFORE_SLOTS)
+
+    fake_run = _mock_success_path(monkeypatch)
+    path = _hand_written(tmp_path, "空き家 住宅 対策",
+                         source_url="https://kokkai.ndl.go.jp/#/detail?q=別の発言")
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策",
+                         "--script", str(path)])
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_daily.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "中止します" in err
+    assert "一次資料" in err
+    assert not fake_run.upload_calls()
+
+
+def test_scriptは題材を固定する引数と一緒でなければ受け付けない(tmp_path, monkeypatch, capsys):
+    """RSSの並び順で題材が決まる経路に人の原稿を渡すと、**その日たまたま
+    先頭に来た別の題材**に原稿が付く。題材を固定する引数を必須にする。
+    """
+    _setup_paths(tmp_path, monkeypatch)
+    path = _hand_written(tmp_path, "空き家 住宅 対策")
+    monkeypatch.setattr("sys.argv", ["run_daily.py", "--script", str(path)])
+
+    with pytest.raises(SystemExit) as e:
+        run_daily.main()
+
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "--script" in err and "--keyword" in err and "--only" in err
+    assert "unrecognized" not in err
+
+
+def test_scriptは2本以上作る指定と一緒に使えない(tmp_path, monkeypatch, capsys):
+    """1つの原稿は1本ぶん。枠が2つあるときに黙って2本目を作ると、
+    2本目は原稿が無いまま台本生成に落ちるか、同じ原稿が二重に使われる。
+    """
+    _setup_paths(tmp_path, monkeypatch)
+    path = _hand_written(tmp_path, "空き家 住宅 対策")
+    monkeypatch.setattr("sys.argv",
+                        ["run_daily.py", "--keyword", "空き家 住宅 対策",
+                         "--script", str(path), "--limit", "2"])
+
+    with pytest.raises(SystemExit) as e:
+        run_daily.main()
+
+    assert e.value.code == 2
+    assert "--script" in capsys.readouterr().err
