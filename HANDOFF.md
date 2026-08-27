@@ -1,124 +1,128 @@
 # HANDOFF
 
-最終更新: 2026-08-27（セッション: Studio 調査 → 次の1本の題材決め）
+最終更新: 2026-08-27（セッション: Studio 調査 → `--script` 追加 → ビザ手数料の1本を予約）
 
 ## いま何をしているのか
 
-**Studio（チャンネルの実測）を一通り見た。次の1本の題材まで決めて、
-一次資料も引き当てた。ただし台本生成が Anthropic の認証不在で動かず、
-動画そのものは作れていない。** コードは変更していない。
+**Anthropic の認証がこのPCに無い状態でも1本作れるようにして、実際に1本作って予約した。**
+台本の文章は対話セッション（Claude Code）が書き、`--script` でパイプラインに渡した。
 
 ## 今回やったこと
 
-### 1. Studio をAPIで実測した（コードは触っていない）
+### 1. `run_daily.py --script PATH` を足した（新機能）
 
-`token.json` は生きている。`channels.list(mine=True)` の出力:
+台本を生成せず、JSONファイルの文章を使う経路。**作り手だけを差し替え、
+それより後ろ（引用カードの検証・音声合成・動画合成・アップロード）は
+モデルが書いた場合と完全に同じ経路を通る。**
 
+- `scripts/script_writer.py`: `load_script(path, evidence)` と `ScriptMismatch` を追加。
+  台本ファイルには Script の全項目に加えて **`source_url` を必須**にし、実行時に
+  `evidence.collect()` が選んだ一次資料と一致しなければ受け付けない。
+  一致を見ないと、検索語の当たり順が変わっただけで「Aの発言の出典キャプションが
+  付いた画面に、Bの発言についての原稿」が乗る。
+- `scripts/run_daily.py`: `--script` を追加。`--keyword` か `--only` が無ければ
+  `ap.error`（RSSの並び順で題材が決まる経路に人の原稿を渡すと別の題材に付く）。
+  `--limit 1` 以外との併用も拒否。`ScriptMismatch` は題材を飛ばさず実行ごと中止。
+- テスト: `tests/test_script_writer.py` に6件、`tests/test_run_daily.py` に4件追加。
+
+### 2. その経路で1本作って予約した
+
+```bash
+python scripts/run_daily.py --keyword "査証 手数料" \
+  --script <台本.json> --days-ahead 3 --limit 1
 ```
-日本の最新ニュースまるわかり UCYHTfHJOoETzvpx-VZlUTng
-stats:  {"viewCount":"1325814","subscriberCount":"2880","videoCount":"198"}
-status: {"privacyStatus":"public","isLinked":true,"longUploadsStatus":"allowed",
-         "isChannelMonetizationEnabled":false}
-```
 
-`playlistItems`＋`videos.list` で直近40本の privacyStatus / publishAt / viewCount を並べた。
-
-### 2. 最新ニュースを調べ、題材を1件に絞った
-
-- RSS 候補（`yield_report.py --refresh`）は 20件中 採用可6件だが、
-  上位は消費税減税・熊本地震・GPIF で**すでに動画にした出来事の続報**が大半。
-- 代わりに Web 検索で拾った「**訪日ビザ手数料が1978年以来48年ぶりに値上げ
-  （一次有効査証 3,000円 → 15,000円）、2026年7月1日申請分から適用**」を
-  `--keyword` 経路で国会会議録に当て、**当たった**。
+### 3. Studio をAPIで実測した（1つ前のセッション分をここに残す）
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **認証は生きている。** 上記 `channels.list` が返った（8/26 に一度死んだ件は再発なし）。
-- **長尺 `UqjB--sNTKk` は7日で 2 再生。** ショート38本から関連動画で
-  リンクしたが、**回遊は起きていない**（前回セッションの次アクションの答え）。
-  同期間のショートは1本あたり約1,000〜1,400再生。
-- **`R_dirwcTjqs`（8/21 18:30公開）だけ 26 再生。** 前後のショートが1,200前後の中で
-  桁が2つ違う。privacyStatus は public。
-- **`8ebRhoO41tM` は private・publishAt=2026-08-27T09:30Z（＝本日18:30 JST）なのに
-  viewCount 1461・likeCount 13。** 予約中の動画に再生数は付かない。
-  `snippet.publishedAt` は 2026-08-16T22:30:04Z で、`veU-6dJhtR0` の
-  2026-08-16T22:30:23Z と**同じ枠（8/17 07:30 JST）に19秒差で並んでいる**。
-  → **推測（未確認）**: 8/17 07:30 の枠に2本重なって公開され、あとから
-  片方を private に戻して 8/27 18:30 へ付け替えた。誰がいつ操作したかは不明。
-  **本日18:30に、すでに1,461再生ある動画がもう一度公開される。**
-- **`zC8OJmUT9Us` は private・publishAt 無し・viewCount 1147。** 一度公開されて
-  private に戻された状態。`published.json` にも `publish_at` が無い。
-- **`watch_channel.py` はこの PC からだと HTTP 404 で失敗する。**
-  ただし別チャンネル（Google Developers）の feed も同じく404、かつ
-  **GitHub Actions の watchdog は 8/26 まで success**（`gh run list`）。
-  → **チャンネル側の異常ではなく、この回線から YouTube の RSS が引けないだけ。**
-  watchdog は正常。ローカルで `watch_channel.py` を監視に使わないこと。
-- **予約は 8/30 07:30 JST まで埋まっている**（6本）。**次の空き枠は 8/30 18:30 JST。**
-- **題材の一次資料が取れた。** `evidence.collect('査証 手数料')` → 13件、
-  先頭が `is_admissible: True`:
+### 今回の1本
 
-  ```
-  speaker: 横山信一   第221回国会 参議院法務委員会 2026-05-28
-  source : https://kokkai.ndl.go.jp/txt/122115206X01120260528/103
-  quote  : …令和八年度予算では、外国人施策等の財源確保に向けて…査証手数料も
-           引き上げることになっています。現状では一次有効査証の手数料は三千円ですが、
-           一万五千円の大幅な引上げが予定されています。
-           この査証手数料は一九七八年以来値上げされていない…いきなり五倍の値上げ…
-  ```
+- **`pytest` 424 passed**（`--script` 追加後）。
+- **アップロードと予約が通った**:
+  `✓ 予約しました: https://www.youtube.com/watch?v=8zGOoD1GhUQ → 2026-08-30T18:30:00+09:00`
+- **API で引き直して予約を確認した**（アップロード直後の欠け対策）:
+  `publishAt: 2026-08-30T09:30:00Z`（＝8/30 18:30 JST）/ `privacyStatus: private` /
+  `duration: PT59S`。`tags` は `None` で返るが、これは既知の API の癖。
+- **尺**: `試行1: speedScale=0.970 → 実尺58.54秒`、`voice.wav 58.54秒 → video.mp4 58.54秒（差 +0.00秒）`。
+- **一次資料**: 第221回国会 参議院法務委員会 2026-05-28 横山信一
+  https://kokkai.ndl.go.jp/txt/122115206X01120260528/103
+  引用「この査証手数料は一九七八年以来値上げされていない」。
+  **見出しと引用の噛み合いは人が見て確認した**（引用そのものに 3,000円→15,000円・
+  1978年以来・五倍 が入っている）。
+- **画像**: Commons の横山信一の写真（ja.wikipedia 経由）。発言者と一致。
+- **テロップのはみ出しを潰した。** 初回ビルドで
+  `1978年以来値上げされていない」。` が **1140px**（画面1080px）になって
+  最後の「。」が切れていた（フレーム画像で確認）。原稿を書き換えて 0 にした
+  （`C:\Users\oshim\AppData\Local\Temp\claude\check_telop.py` で全行の幅を測定）。
 
-  **見出しと引用の噛み合いは人（このセッション）が見て確認した。** 引用そのものに
-  「3,000円→15,000円」「1978年以来」「五倍」が入っており、ニュースの事実と一致する。
-  重複ガードも通る（`same-topic conflict: False`、候補ID `c099195dc5e4` は未使用）。
+### Studio の実測
 
-## 未検証のもの / できなかったこと
+- 認証は生きている。`viewCount 1,325,814 / subscriberCount 2,880 / videoCount 198`、
+  `isChannelMonetizationEnabled: false`。
+- **長尺 `UqjB--sNTKk` は7日で 2 再生。** ショート38本から関連動画でリンクしたが
+  回遊は起きていない。同期間のショートは1本あたり約1,000〜1,400再生。
+- **`R_dirwcTjqs`（8/21公開）だけ 26 再生。** 前後が1,200前後。理由は不明。
+- **`8ebRhoO41tM` は private・予約=本日18:30 JST なのに 1,461再生・13高評価。**
+  `snippet.publishedAt` が `veU-6dJhtR0` と19秒差で同じ枠（8/17 07:30）に並ぶ。
+  → **推測（未確認）**: 8/17 07:30 に2本重なって公開され、片方を private に戻して
+  8/27 18:30 へ付け替えた。**本人の判断で「そのままにする」ことにした**（再公開させる）。
+- **`zC8OJmUT9Us` は private・予約なし・1,147再生。** 一度公開されて private に戻っている。
+- **ローカルの `watch_channel.py` は HTTP 404 で失敗する。** 別チャンネル
+  （Google Developers）の feed も同じく404、かつ **GitHub Actions の watchdog は
+  8/26 まで success**（`gh run list`）。→ チャンネルの異常ではなく、
+  **この回線から YouTube の RSS が引けないだけ**。watchdog は正常。
 
-- **動画は作れていない。`ANTHROPIC_API_KEY` が無い。**
-  - Bash・PowerShell の環境変数とも未設定（User スコープにも無し）。
-  - `ant` CLI も未インストール、`~/.anthropic` も無し。
-  - 実測: `Anthropic().messages.create(...)` →
-    `TypeError: Could not resolve authentication method.`
-  - `run_daily.py` は `write(recipe)` で `ScriptWriterUnavailable` を投げて
-    **その場で日次実行を中止する**（設計どおり）。回避策は入れていない。
-- VOICEVOX は起動済み（`/speakers` が 200）。詰まるのは台本生成だけ。
-- `8ebRhoO41tM` の重複公開・再スケジュールの経緯は**推測**。ログは残っていない。
-- `R_dirwcTjqs` が 26 再生に留まる理由は**不明**（配信制限か題材かは未確認）。
+## 未検証のもの
+
+- **`ANTHROPIC_API_KEY` は依然として無い。** `--script` を使わない通常の
+  `run_daily.py` / `run_long.py` は今も動かない（`ScriptWriterUnavailable` で中止）。
+- **`--script` 経路の本番実走は今回の1回だけ。** 8/30 18:30 に実際に公開されるかは未確認。
+- 予約8本（今回の1本を含む）の見出しと引用の噛み合いは、今回の1本以外は未確認。
+- `8ebRhoO41tM` の重複公開・再スケジュールの経緯は推測。ログは残っていない。
+- `R_dirwcTjqs` が 26 再生に留まる理由は不明。
+- **テロップの禁則処理は直していない。** `draw.wrap()` は行頭禁則で行が幅を
+  超えることを許しており、`」` `。` が続くと画面外に出る。既存10本448行のうち
+  1行（公開済みの `work/b3f6f9e5cd12`「四百十三万人となっております」。= 1120px）が
+  同じ状態。**別タスクとして切り出してある。**
 
 ## 次にやること
 
-1. **Anthropic の認証を用意する。** これが無いと1本も作れない。
+1. **8/30 18:30 JST に `8zGOoD1GhUQ` が公開されたか見る。**
 
    ```bash
-   setx ANTHROPIC_API_KEY "sk-ant-..."
+   python scripts/upload_youtube.py --auth-only
    ```
 
-   （設定後は新しいシェルで実行すること）
-
-2. **決めた題材で1本作る。** 次の空き枠 8/30 18:30 JST に入る。
+2. **次の1本も `--script` で作る**（認証が無いままなら）。空き枠は 8/30 07:30 の次、
+   つまり 8/31 07:30 JST 以降。題材は `--keyword` で国会会議録を直接掘るほうが当たる。
 
    ```bash
-   python scripts/run_daily.py --keyword "査証 手数料" --days-ahead 3 --limit 1
+   python scripts/yield_report.py --refresh    # RSS候補を見る（既出の続報が多い）
+   python scripts/run_daily.py --keyword "<2語以上>" --script <台本.json> --days-ahead 4 --limit 1
    ```
 
-3. **本日 18:30 JST の `8ebRhoO41tM` をどうするか決める。** そのままだと
-   1,461再生ある動画が再公開される。差し替えるなら:
+   台本JSONの書式は `scripts/script_writer.load_script` の docstring と
+   `tests/test_script_writer.py` の `HAND_WRITTEN` を見る。**`source_url` 必須。**
 
-   ```bash
-   python scripts/unpublish.py 8ebRhoO41tM
-   ```
+3. **`ANTHROPIC_API_KEY` を用意すれば通常経路に戻せる。** `--script` は残しておいてよい。
 
 4. **長尺の方針を決める。** 導線（関連動画38本）を張っても 2 再生だった。
    本数を増やす前に、題材かサムネイルか、どちらを測るかを決める。
 
-5. **`zC8OJmUT9Us` を公開に戻すか消すか決める**（1,147再生あるが現在 private）。
+5. `zC8OJmUT9Us` を公開に戻すか消すか決める（1,147再生あるが現在 private）。
 
 ## 触ってはいけないところ
 
-- 採用ゲート（`evidence.collect()`）を緩めない。**認証が無いからといって
-  台本生成を迂回する経路を足さない**（今回も足していない）。
+- 採用ゲート（`evidence.collect()`）を緩めない。**`--script` は台本の作り手を
+  変えるだけで、採用ゲートも引用カードの検証も従来どおり通る。ここを迂回する
+  経路を足さない。**
+- 台本ファイルの `source_url` 必須をやめない。突き合わせが無いと、別の発言の
+  出典キャプションが付いた画面に無関係な原稿が乗り、しかも画面上は
+  一次資料付きに見える。
 - `state/*.json` を手で編集しない。
 - **ローカルの `watch_channel.py` の 404 を「チャンネルが止まった」と読まない。**
-  この回線から YouTube の RSS が引けないだけ。判定は GitHub Actions の watchdog を見る。
+  判定は GitHub Actions の watchdog を見る。
 - 「関連動画」は API から読めない。設定したらその場で画面で確かめる。
-- Studio を自動操作するときは、ダイアログが開いたのを見てから入力する
-  （同一バッチで続けると説明文が壊れる。2026-08-26 の事故）。
+  新しく作ったショート（`8zGOoD1GhUQ` を含む）には**まだ設定していない**。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
