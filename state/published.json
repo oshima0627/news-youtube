@@ -427,6 +427,26 @@
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kokkai.ndl.go.jp/txt/122105367X01420260715/22",
       "publish_at": "2026-08-31T18:30:00+09:00"
+    },
+    "658714edd620": {
+      "youtube_video_id": "Awg7xxgeVJ4",
+      "url": "https://www.youtube.com/watch?v=Awg7xxgeVJ4",
+      "title": "個人情報の漏えい1万7139件 うち2割は不正目的のおそれ 国会で示された数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115385X00820260708/55",
+      "publish_at": "2026-09-01T07:30:00+09:00"
+    },
+    "711a18f5e613": {
+      "youtube_video_id": "S5_IhLateiw",
+      "url": "https://www.youtube.com/watch?v=S5_IhLateiw",
+      "title": "防衛費GDP比2%＝11兆円、米は3.5%を要求 国会で並べられた二つの数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121915254X00420251106/23",
+      "publish_at": "2026-09-01T18:30:00+09:00"
     }
   }
 }

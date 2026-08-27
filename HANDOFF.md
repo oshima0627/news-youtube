@@ -1,6 +1,6 @@
 # HANDOFF
 
-最終更新: 2026-08-27（セッション: `--script` 追加 → 3本を予約し 8/31 まで枠を埋めた）
+最終更新: 2026-08-27（セッション: `--script` 追加 → 5本を予約し 9/1 まで枠を埋めた）
 
 ## いま何をしているのか
 
@@ -8,7 +8,7 @@
 台本の文章は対話セッション（Claude Code）が書き、`--script` でパイプラインに渡す。
 それ以外（採用ゲート・引用カードの検証・音声合成・動画合成・予約投稿）は従来の経路。
 
-**枠は 2026-08-31 18:30 JST まで埋まっている。次の空きは 9/1 07:30 JST。**
+**枠は 2026-09-01 18:30 JST まで埋まっている（予約11本）。次の空きは 9/2 07:30 JST。**
 
 ## 予約の全量（2026-08-27 15:20 時点、`state/published.json`）
 
@@ -23,6 +23,8 @@
 | 08-30 18:30 | **8zGOoD1GhUQ** | ビザ手数料 3000円→1万5000円（`--script`） |
 | 08-31 07:30 | **myjKRuLTmXw** | 教員不足3827人・採用倍率2.9倍（`--script`） |
 | 08-31 18:30 | **hQm4LqOv18o** | 副首都の候補地・大阪に南海トラフのリスク（`--script`） |
+| 09-01 07:30 | **Awg7xxgeVJ4** | 個人情報の漏えい1万7139件・2割は不正目的のおそれ（`--script`） |
+| 09-01 18:30 | **S5_IhLateiw** | 防衛費GDP比2%＝11兆円、米は3.5%を要求（`--script`） |
 
 ## 今回やったこと
 
@@ -38,12 +40,14 @@
   `ap.error`。`--limit 1` 以外との併用も拒否。`ScriptMismatch` は実行ごと中止。
 - テスト: `tests/test_script_writer.py` に6件、`tests/test_run_daily.py` に4件追加。
 
-### 2. その経路で3本作って予約した
+### 2. その経路で5本作って予約した
 
 ```bash
-python scripts/run_daily.py --keyword "査証 手数料" --script <台本.json> --days-ahead 3 --limit 1
-python scripts/run_daily.py --keyword "教員 不足"   --script <台本.json> --days-ahead 4 --limit 1
-python scripts/run_daily.py --keyword "副首都 大阪" --script <台本.json> --days-ahead 4 --limit 1
+python scripts/run_daily.py --keyword "査証 手数料"     --script <台本.json> --days-ahead 3 --limit 1
+python scripts/run_daily.py --keyword "教員 不足"       --script <台本.json> --days-ahead 4 --limit 1
+python scripts/run_daily.py --keyword "副首都 大阪"     --script <台本.json> --days-ahead 4 --limit 1
+python scripts/run_daily.py --keyword "個人情報 漏えい" --script <台本.json> --days-ahead 5 --limit 1
+python scripts/run_daily.py --keyword "防衛費 国内総生産" --script <台本.json> --days-ahead 5 --limit 1
 ```
 
 台本を書く前に、`C:\Users\oshim\AppData\Local\Temp\claude\check_telop.py` で
@@ -52,24 +56,32 @@ python scripts/run_daily.py --keyword "副首都 大阪" --script <台本.json> 
 ## 検証済みの事実（実際に画面に出した出力）
 
 - **`pytest` 424 passed**（`--script` 追加後）。
-- **3本とも予約が通った。API で引き直して確認した**（アップロード直後は欠けて返るため）:
+- **5本とも予約が通った。API で引き直して確認した**（アップロード直後は欠けて返るため）:
 
   ```
   8zGOoD1GhUQ PT59S private 2026-08-30T09:30:00Z （= 8/30 18:30 JST）
   myjKRuLTmXw PT59S private 2026-08-30T22:30:00Z （= 8/31 07:30 JST）
   hQm4LqOv18o PT59S private 2026-08-31T09:30:00Z （= 8/31 18:30 JST）
+  Awg7xxgeVJ4 PT59S private 2026-08-31T22:30:00Z （= 9/1 07:30 JST）
+  S5_IhLateiw PT59S private 2026-09-01T09:30:00Z （= 9/1 18:30 JST）
   ```
 
-- **尺は3本とも58.4〜58.6秒**（`voice.wav` と `video.mp4` の差 +0.01秒以内）。
-- **一次資料と見出しの噛み合いは3本とも人が見て確認した**（引用そのものに見出しの
+  `S5_IhLateiw` は1回目の照会で `duration=P0D` が返ったが、処理完了後に
+  引き直して `PT59S / processed` を確認した（既知の API の癖）。
+
+- **尺は5本とも58.4〜58.7秒**（`voice.wav` と `video.mp4` の差 +0.03秒以内）。
+- **一次資料と見出しの噛み合いは5本とも人が見て確認した**（引用そのものに見出しの
   数字が入っている）:
   - ビザ: 参議院法務委員会 2026-05-28 横山信一 /txt/122115206X01120260528/103
   - 教員: 参議院決算委員会 2026-05-27 竹内真二 /txt/122114103X00520260527/133
   - 副首都: 衆議院地域活性化・こども政策・デジタル社会形成に関する特別委員会
     2026-07-15 向山好一 /txt/122105367X01420260715/22
-- **画像**: ビザ＝横山信一、副首都＝向山好一（どちらも Commons、被写体一致）。
-  教員＝**発言者の写真が無く汎用の国会議事堂画像**（設計どおりのフォールバック）。
-- **テロップのはみ出しは3本とも0**（測定して確定。ビザの初回ビルドでは
+  - 漏えい: 参議院デジタル社会の形成及び人工知能の活用等に関する特別委員会
+    2026-07-08 郡山りょう /txt/122115385X00820260708/55
+  - 防衛費: 参議院本会議 2025-11-06 小池晃 /txt/121915254X00420251106/23
+- **画像**: ビザ＝横山信一、副首都＝向山好一、防衛費＝小池晃（Commons、被写体一致）。
+  教員・漏えい＝**発言者の写真が無く汎用の国会議事堂画像**（設計どおりのフォールバック）。
+- **テロップのはみ出しは5本とも0**（測定して確定。ビザの初回ビルドでは
   `1978年以来値上げされていない」。` が1140px＝画面外に出ていたので書き換えた）。
 - **チャンネルは生きている**: `viewCount 1,325,814 / subscriberCount 2,880 /
   videoCount 198`、`isChannelMonetizationEnabled: false`。
@@ -86,7 +98,14 @@ python scripts/run_daily.py --keyword "副首都 大阪" --script <台本.json> 
   `run_long.py` は動かない（`ScriptWriterUnavailable` で中止）。
   **つまり無人の日次実行（schtasks）は現状できない。** 枠を埋めるには
   対話セッションで台本を書く必要がある。
-- **`--script` で作った3本が実際に公開されるかは未確認**（最初は 8/30 18:30）。
+- **`--script` で作った5本が実際に公開されるかは未確認**（最初は 8/30 18:30）。
+- **`S5_IhLateiw`（防衛費）は共産党議員の質問を扱っている。** 数字（11兆円・21兆円・
+  4倍）と問いをそのまま出しており、賛否は書いていないが、**政治的に一方の立場から
+  出た発言であることは題材の性質として残る**。公開後の反応は未観測。
+- **数字の表記が混ざる回がある。** `S5_IhLateiw` のテロップに「50分の一」が出る
+  （`normalize_numerals` は「五十」を50に直すが、単独の「一」は漢字のまま残す）。
+  読み上げは正しい。作り直すほどではないと判断したが、台本で「〜分の一」は
+  避けたほうがきれいに出る。
 - **`myjKRuLTmXw`（教員不足）は本文で「小中高校生の自殺者数も538人」に触れている。**
   一次資料の逐語からの引用だが、配信制限がかかる可能性は否定できない。
   **8/31 以降に再生数を見て、他の回（約1,200）と比べること。**
@@ -101,17 +120,24 @@ python scripts/run_daily.py --keyword "副首都 大阪" --script <台本.json> 
 
 ## 次にやること
 
-1. **9/1 の枠を埋める**（空きは 9/1 07:30 と 18:30）。手順は上と同じ:
+1. **9/2 以降の枠を埋める**（空きは 9/2 07:30 から）。手順は上と同じ:
 
    ```bash
-   python scripts/run_daily.py --keyword "<2語以上>" --script <台本.json> --days-ahead 5 --limit 1
+   python scripts/run_daily.py --keyword "<2語以上>" --script <台本.json> --days-ahead 6 --limit 1
    ```
 
    台本JSONの書式は `scripts/script_writer.load_script` の docstring と
    `tests/test_script_writer.py` の `HAND_WRITTEN`。**`source_url` 必須。**
-   まだ使っていて当たりの良い検索語の候補（実測で `is_admissible: True`）:
-   `医師 偏在`（木村義雄・参院厚労委 2026-06-25、薬剤師の余剰に言及）、
-   `防衛費 国内総生産`（小池晃・参院本会議 2025-11-06、GDP比2%＝11兆円）。
+   実測済みで未使用の検索語候補（`is_admissible: True`）:
+   `医師 偏在`（丸尾なつ子・衆院厚労委 2026-07-15、医薬品の供給偏在。数字は無い）、
+   `外国人 土地`（神谷宗幣・両院国家基本政策委員会合同審査会 2026-07-15、骨太方針）。
+   `食料 自給率` は**直近14日の題材と衝突する**ので使えない。
+
+   台本を書く手順（毎回これを踏む）:
+   1. `collect(<検索語>)` の先頭（既出を除く）を見て、逐語引用を全文読む
+   2. **引用に入っている事実だけ**で本文を書く（330〜355字）。ニュース側の事実を足さない
+   3. `quote_excerpt` は逐語引用の**部分文字列**にする（25字以内）
+   4. `check_telop.py` で全テロップ行の幅を測り、はみ出し0を確認してからビルド
 
 2. **8/30 18:30 に `8zGOoD1GhUQ` が公開されたか見る。** `--script` 経路の初公開。
 
