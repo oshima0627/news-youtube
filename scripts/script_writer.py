@@ -8,7 +8,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, Field, ValidationError
 
 # anthropic SDK は**必要になってから**読み込む。import に実測20.3秒かかり
 # （`python -X importtime` で確認）、run_daily.py はモジュール先頭で
@@ -53,6 +56,16 @@ class ScriptGenerationRejected(RuntimeError):
     （政治ニュースを扱う以上、特定の題材だけで現実に起こりうる）。
     他の題材では成功する可能性があるため、呼び出し側はこの題材だけを
     飛ばして次に進む。
+    """
+
+
+class ScriptMismatch(RuntimeError):
+    """人が書いた台本ファイルを、この題材の台本として使えない。
+
+    ファイルが読めない・項目が欠けている・**書かれた対象の一次資料が
+    実行時に選ばれた一次資料と違う**、のいずれか。どれも次の題材に進んでも
+    同じ理由で失敗する（1つの台本は1つの発言に対して書かれている）ので、
+    呼び出し側は題材を飛ばさず実行そのものを中止する。
     """
 
 
@@ -308,6 +321,51 @@ def write(recipe: dict) -> Script:
             f"usage={getattr(response, 'usage', None)}）"
         )
     return parsed
+
+
+def load_script(path, evidence: dict) -> Script:
+    """人が書いた台本を JSON ファイルから読む。write() と同じ Script を返す。
+
+    Anthropic API を使わずに1本作るための入口。**モデルに書かせる代わりに
+    人（または対話セッション）が書いた文章を渡す**。
+
+    ファイルには Script の全項目に加えて `source_url` を書く。これは
+    「この原稿はどの発言に対して書かれたか」の宣言で、実行時に
+    `evidence.collect()` が選んだ一次資料と突き合わせる。**一致しなければ
+    受け付けない。** 一致を見ないと、検索語の当たり順が変わっただけで
+    「Aの発言の出典キャプションが付いた画面に、Bの発言についての原稿が
+    乗った動画」ができ、しかも画面上は一次資料付きに見えてしまう。
+
+    引用カードの文言（quote_excerpt）が逐語引用に含まれるかの検証は、
+    モデル出力と同じく run_daily.ensure_grounded_card / build_short が行う。
+    ここで別の判定を書くと、同じ概念の基準が2箇所に散る。
+    """
+    path = Path(path)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise ScriptMismatch(f"台本ファイルを読めませんでした: {path}（{e}）") from e
+
+    if not isinstance(raw, dict):
+        raise ScriptMismatch(f"台本ファイルはJSONオブジェクトにしてください: {path}")
+
+    declared = (raw.get("source_url") or "").strip()
+    if not declared:
+        raise ScriptMismatch(
+            f"台本ファイルに source_url がありません: {path}。"
+            "どの一次資料に対して書いた原稿かを宣言してください")
+
+    actual = (evidence.get("source_url") or "").strip()
+    if declared != actual:
+        raise ScriptMismatch(
+            "台本ファイルが書かれた一次資料と、今回選ばれた一次資料が違います。"
+            f"  台本ファイル: {declared}  /  今回の一次資料: {actual}")
+
+    try:
+        return Script.model_validate(
+            {k: v for k, v in raw.items() if k != "source_url"})
+    except ValidationError as e:
+        raise ScriptMismatch(f"台本ファイルの項目が足りません: {path}（{e}）") from e
 
 
 def _parse(system: str, prompt: str, output_format):

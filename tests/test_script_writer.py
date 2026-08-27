@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -307,3 +308,76 @@ def test_短い見出しでも導入は窓に収まる():
     intro = len(intro_narration(["アイ", "ウエ", "オカ"])) * narrate.SECONDS_PER_CHAR
 
     assert INTRO_TARGET_MIN <= intro <= INTRO_TARGET_MAX
+
+
+# ── 人が書いた台本をファイルから読む（load_script） ──────────────
+#
+# Anthropic API を使わずに1本作る経路。モデルに書かせる代わりに人（または
+# 対話セッション）が書いた文章を渡す。**渡した文章がどの一次資料に対して
+# 書かれたものかを file 側に持たせ、実行時に選ばれた一次資料と一致するかを
+# ここで突き合わせる。** 一致を見ないと、検索語の並び順が変わっただけで
+# 「別の発言に、別の発言について書いた原稿」が付いた動画ができる。
+
+HAND_WRITTEN = {
+    "source_url": RECIPE["evidence"]["source_url"],
+    "title": "議員定数削減、四十五という数字の出どころ",
+    "headline": "定数削減 四十五",
+    "narration": "国会でこう述べられました。" * 20,
+    "subtitle": "四十五削減という数字が国会で語られた",
+    "quote_excerpt": "議員定数を四十五削減する",
+    "figure_label": "削減数",
+    "figure_value": "45",
+    "tags": ["国会", "議員定数", "削減"],
+}
+
+
+def _write_hand_written(tmp_path, **overrides) -> Path:
+    data = dict(HAND_WRITTEN, **overrides)
+    for key, value in list(data.items()):
+        if value is None:
+            del data[key]
+    path = tmp_path / "script.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_人が書いた台本をファイルから読める(tmp_path):
+    got = script_writer.load_script(_write_hand_written(tmp_path),
+                                    RECIPE["evidence"])
+    assert isinstance(got, Script)
+    assert got.title == "議員定数削減、四十五という数字の出どころ"
+    assert got.tags == ["国会", "議員定数", "削減"]
+
+
+def test_台本ファイルの出典が一次資料と違えば受け付けない(tmp_path):
+    # 検索語の並び順が変わって別の発言が選ばれた場合。ここで止めないと、
+    # 別の発言の出典キャプションが付いた動画に無関係な原稿が乗る。
+    path = _write_hand_written(
+        tmp_path, source_url="https://kokkai.ndl.go.jp/#/detail?x=999")
+    with pytest.raises(script_writer.ScriptMismatch):
+        script_writer.load_script(path, RECIPE["evidence"])
+
+
+def test_台本ファイルにsource_urlが無ければ受け付けない(tmp_path):
+    # 突き合わせができない台本を黙って通すと、一致の検証そのものが消える。
+    path = _write_hand_written(tmp_path, source_url=None)
+    with pytest.raises(script_writer.ScriptMismatch):
+        script_writer.load_script(path, RECIPE["evidence"])
+
+
+def test_台本ファイルの項目が欠けていれば受け付けない(tmp_path):
+    path = _write_hand_written(tmp_path, tags=None)
+    with pytest.raises(script_writer.ScriptMismatch):
+        script_writer.load_script(path, RECIPE["evidence"])
+
+
+def test_台本ファイルが読めなければ受け付けない(tmp_path):
+    path = tmp_path / "script.json"
+    path.write_text("{壊れたJSON", encoding="utf-8")
+    with pytest.raises(script_writer.ScriptMismatch):
+        script_writer.load_script(path, RECIPE["evidence"])
+
+
+def test_台本ファイルが無ければ受け付けない(tmp_path):
+    with pytest.raises(script_writer.ScriptMismatch):
+        script_writer.load_script(tmp_path / "ない.json", RECIPE["evidence"])

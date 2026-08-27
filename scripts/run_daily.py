@@ -65,7 +65,9 @@ from scripts.narrate import synthesize  # noqa: E402
 from scripts.photos import download as download_photo  # noqa: E402
 from scripts.script_writer import (  # noqa: E402
     ScriptGenerationRejected,
+    ScriptMismatch,
     ScriptWriterUnavailable,
+    load_script,
     write,
 )
 from scripts.slots import pending_slots  # noqa: E402
@@ -298,6 +300,10 @@ def main() -> None:
     ap.add_argument("--keyword", metavar="検索語", default=None,
                     help="RSSを使わず、この検索語で一次資料を引いて題材にする"
                          "（空白区切りのAND検索。国会会議録を直接掘るとき）")
+    ap.add_argument("--script", metavar="PATH", default=None,
+                    help="台本を生成せず、このJSONファイルの文章を使う"
+                         "（Anthropic の認証が無い環境で1本作るとき）。"
+                         "--keyword か --only と一緒に指定する")
     ap.add_argument("--candidates", type=int, default=20, metavar="N",
                     help="RSSから取り直す候補の件数（既定20）。"
                          "--only で21位以下の題材を選んだときに広げる")
@@ -306,11 +312,24 @@ def main() -> None:
         # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
         # 実際とは違う理由を表示して終わる。
         ap.error("--limit は1以上を指定してください")
+    if a.script and not (a.keyword or a.only):
+        # RSSの並び順で題材が決まる経路に人の原稿を渡すと、その日たまたま
+        # 先頭に来た**別の題材**に原稿が付く。しかも画面には一次資料の
+        # 出典キャプションが出るので、食い違いが表からは分からない。
+        ap.error("--script は --keyword か --only と一緒に指定してください"
+                 "（1つの原稿は1つの題材に対して書かれています）")
+    if a.script and a.limit not in (None, 1):
+        # 1つの原稿は1本ぶん。枠が2つある日に2本目まで作ろうとすると、
+        # 2本目は原稿の無いまま台本生成に落ちるか、同じ原稿が二重に使われる。
+        ap.error("--script は1本ぶんの原稿なので --limit 1 以外と併用できません")
     if a.keyword and a.only:
         # 黙ってどちらかを優先すると、人が選んだつもりの題材とは違うものが
         # 作られるか、RSSを引く必要のない実行がRSSの停止に巻き込まれる。
         ap.error("--keyword と --only は同時に指定できません"
                  "（どちらも題材の選び方を決める引数です）")
+
+    if a.script:
+        a.limit = 1
 
     # empty_streak の判定に使う「今日」。EXIT_NO_TOPIC 分岐（早期return）と
     # 通常終了時の両方から _bump_empty_streak を呼ぶため、ここで一度だけ
@@ -528,8 +547,21 @@ def main() -> None:
             #     政治ニュースを扱う以上、特定の題材だけで現実に起こりうる。
             #     環境は正常で他の題材なら成功しうるので、この題材だけ飛ばして
             #     次に進む（日次実行全体は止めない）。
+            # 台本の作り手はここだけで分かれる。これより後ろ（引用カードの
+            # 検証・音声合成・動画合成・アップロード）はモデルが書いた場合と
+            # 完全に同じ経路を通る。検証を作り手ごとに分けると、人が書いた
+            # ぶんだけ関門が緩い、という食い違いができる。
             try:
-                script = write(recipe)
+                script = (load_script(a.script, recipe["evidence"])
+                          if a.script else write(recipe))
+            except ScriptMismatch as e:
+                # 原稿が書かれた発言と、今回当たった発言が違う（あるいは
+                # ファイルが読めない）。次の題材に進んでも同じ理由で失敗する
+                # ので、題材を飛ばさず実行そのものを中止する。
+                print(f"✗ 渡された台本をこの題材に使えないため中止します: {e}",
+                      file=sys.stderr)
+                aborted = True
+                break
             except ScriptWriterUnavailable as e:
                 print(f"✗ 台本生成が失敗しました。ANTHROPIC_API_KEY が未設定／"
                       f"無効など、環境不備の可能性が高いため日次実行を"

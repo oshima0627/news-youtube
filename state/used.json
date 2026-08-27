@@ -1,32 +1,5 @@
 [
   {
-    "date": "2026-08-12",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/78",
-    "keywords": [
-      "基本",
-      "消費",
-      "減税"
-    ]
-  },
-  {
-    "date": "2026-08-12",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/38",
-    "keywords": [
-      "外国",
-      "永住",
-      "許可"
-    ]
-  },
-  {
-    "date": "2026-08-12",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121314370X01320240514/78",
-    "keywords": [
-      "年金",
-      "最高",
-      "積立"
-    ]
-  },
-  {
     "date": "2026-08-13",
     "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/6",
     "keywords": [
@@ -344,6 +317,14 @@
     "keywords": [
       "保険適用",
       "出産費用"
+    ]
+  },
+  {
+    "date": "2026-08-27",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/103",
+    "keywords": [
+      "手数料",
+      "査証"
     ]
   }
 ]
