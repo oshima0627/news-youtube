@@ -14,6 +14,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from PIL import Image
 
@@ -202,8 +203,49 @@ def mp4_duration_seconds(path: Path) -> float:
     return float(proc.stdout.strip())
 
 
-def verify_duration(mp4_path: Path) -> float:
+class Sources(NamedTuple):
+    """1本のビルドが読む入力と、書き出す先。
+
+    TikTok バリアント（work/<id>/tiktok/）は、写真・ライセンス・レシピを
+    題材のディレクトリと共有し、台本・音声・mp4 だけを自分のディレクトリに持つ。
+    どちらから取るかを build() の本文に散らすと取り違えたときに追えないので、
+    解決をここ1箇所に閉じ込める。
+    """
+
+    script: Path
+    voice: Path
+    photo: Path
+    license: Path
+    recipe: Path
+    out: Path
+
+
+def resolve_sources(workdir: Path, *, assets_dir: Path | None = None,
+                    recipe_id: str | None = None) -> Sources:
+    """workdir から入力と出力のパスを決める。
+
+    既定（assets_dir も recipe_id も渡さない）は現在の挙動そのまま
+    ＝すべて workdir 自身、レシピは recipes/<workdir名>.json。
+    """
+    assets = Path(assets_dir) if assets_dir is not None else workdir
+    return Sources(
+        script=workdir / "script.json",
+        voice=workdir / "voice.wav",
+        photo=assets / "photo.jpg",
+        license=assets / "license.json",
+        recipe=ROOT / "recipes" / f"{recipe_id or workdir.name}.json",
+        out=workdir / "video.mp4",
+    )
+
+
+def verify_duration(mp4_path: Path, *, target_min: float = TARGET_MIN,
+                    target_max: float = TARGET_MAX) -> float:
     """mp4 の実尺を測り、56〜61秒の範囲外なら警告を出す。
+
+    `target_min` / `target_max` は許容する実尺の窓。既定はショートの
+    56〜61秒で、TikTok バリアント（68〜80秒）は呼び出し側が渡す。窓を固定した
+    ままだと TikTok 版では毎回「範囲外」の警告が出て、本物の異常（無音・合成
+    失敗）がその警告に埋もれる（narrate.synthesize と同じ理由）。
 
     narrate.py の synthesize() と同じ理由（このチャンネルの収益化条件は
     「90日で3本以上の投稿」なので、尺が多少ずれた動画を出すより1本
@@ -212,24 +254,32 @@ def verify_duration(mp4_path: Path) -> float:
     警告を出す。
     """
     duration = mp4_duration_seconds(mp4_path)
-    if not (TARGET_MIN <= duration <= TARGET_MAX):
-        print(f"! 警告: 完成したmp4の尺が{TARGET_MIN:.0f}〜{TARGET_MAX:.0f}秒の"
+    if not (target_min <= duration <= target_max):
+        print(f"! 警告: 完成したmp4の尺が{target_min:.0f}〜{target_max:.0f}秒の"
               f"範囲外です（{mp4_path}, 実尺{duration:.2f}秒）。"
               "narrate.pyの尺補正はwavに対してのみ効いており、動画合成後の"
               "ズレはここでしか検知できない。要確認。")
     return duration
 
 
-def build(workdir: Path) -> Path:
-    script = json.loads((workdir / "script.json").read_text(encoding="utf-8"))
-    license_ = json.loads((workdir / "license.json").read_text(encoding="utf-8"))
-    recipe = json.loads(
-        (ROOT / "recipes" / f"{workdir.name}.json").read_text(encoding="utf-8"))
+def build(workdir: Path, *, assets_dir: Path | None = None,
+          recipe_id: str | None = None,
+          target_min: float = TARGET_MIN,
+          target_max: float = TARGET_MAX) -> Path:
+    """workdir の台本と素材から mp4 を1本作る。
+
+    既定の引数は現在の挙動そのままなので、既存の呼び出しは変わらない。
+    TikTok バリアントだけが assets_dir / recipe_id / 尺の窓を渡す。
+    """
+    src = resolve_sources(workdir, assets_dir=assets_dir, recipe_id=recipe_id)
+    script = json.loads(src.script.read_text(encoding="utf-8"))
+    license_ = json.loads(src.license.read_text(encoding="utf-8"))
+    recipe = json.loads(src.recipe.read_text(encoding="utf-8"))
     # 根拠カードの脚注に出す。どの一次資料から取った根拠かを画面に残す
     source = recipe["evidence"]["context"]
     figure = recipe["evidence"].get("figure") or ""
 
-    voice_path = workdir / "voice.wav"
+    voice_path = src.voice
     # voice.wav の実尺を測り、-t で出力尺を明示的に確定させる。
     # 実測では -shortest 任せだと（静止画ループを -r 30 にフレームレート
     # 変換する際の補間/丸めが原因とみられる）出力が音声より2秒以上長く
@@ -240,12 +290,12 @@ def build(workdir: Path) -> Path:
     # 役割が重複するため外した。
     voice_duration = wav_duration_seconds(voice_path)
 
-    base = compose_base(workdir / "photo.jpg", script, source, figure,
+    base = compose_base(src.photo, script, source, figure,
                         quote=recipe["evidence"].get("quote") or "")
     frames = plan_frames(workdir, script, voice_duration)
     concat_path = write_frames(workdir, base, frames)
 
-    out = workdir / "video.mp4"
+    out = src.out
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_path),
@@ -264,7 +314,8 @@ def build(workdir: Path) -> Path:
             f"{e.stderr}"
         ) from e
 
-    mp4_duration = verify_duration(out)
+    mp4_duration = verify_duration(out, target_min=target_min,
+                                   target_max=target_max)
     print(f"  尺: voice.wav {voice_duration:.2f}秒 → video.mp4 {mp4_duration:.2f}秒"
           f"（差 {mp4_duration - voice_duration:+.2f}秒）")
     print(f"  テロップ: {len(frames)}枚")

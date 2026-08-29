@@ -42,6 +42,30 @@ STREAK = ROOT / "state" / "empty_streak.json"
 PUBLISHED = ROOT / "state" / "published.json"
 CHANNEL_ID = "UCYHTfHJOoETzvpx-VZlUTng"
 
+
+def _tiktok_open_id() -> str:
+    """投稿先の TikTok アカウント（open_id）。認証済みトークンから読む。
+
+    ここで meta.json に焼いておくことで、投稿の直前に
+    `tiktok.assert_expected_account` が取り違えを止められる。トークンがまだ
+    無い環境（＝TikTok を使っていない）では空になり、そのときは
+    --tiktok-script を指定した時点で止まる。
+    """
+    token = ROOT / "tiktok_token.json"
+    if not token.exists():
+        return ""
+    try:
+        return json.loads(token.read_text(encoding="utf-8")).get("open_id", "")
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+TIKTOK_OPEN_ID = _tiktok_open_id()
+
+
+class TikTokNotConfigured(RuntimeError):
+    """TikTok の認証がまだで、投稿先アカウントを特定できない。"""
+
 # 投稿枠も予約公開も JST 運用（slots.py / unpublish.py と同じ）。ローカル時刻
 # （naive）で枠を計算しながら "+09:00" を文字列で直書きしていると、実行環境の
 # タイムゾーンが JST でない瞬間（CI・タイムゾーン設定を変えた端末）に、
@@ -68,10 +92,12 @@ from scripts.script_writer import (  # noqa: E402
     ScriptMismatch,
     ScriptWriterUnavailable,
     load_script,
+    load_tiktok_script,
     write,
 )
 from scripts.slots import pending_slots  # noqa: E402
 from scripts.sources import make_id  # noqa: E402
+from scripts import tiktok, tiktok_queue  # noqa: E402
 from scripts.upload_youtube import (  # noqa: E402
     EXIT_CHANNEL_MISMATCH,
     EXIT_CHANNEL_UNVERIFIED,
@@ -286,7 +312,78 @@ def _write_meta(workdir: Path, script, license_: dict, evidence: dict) -> None:
     ]) + "\n", encoding="utf-8")
 
 
-def main() -> None:
+def write_tiktok_meta(workdir: Path, script, evidence: dict) -> None:
+    """TikTok バリアント用の meta.json を書く。
+
+    YouTube 版（_write_meta）とは別の項目が要る:
+
+      expected_tiktok_open_id  投稿先アカウントの取り違えを投稿前に止める
+      source_context           キャプションに出す出典（tiktok.build_caption が読む）
+
+    description.txt は書かない。TikTok はキャプション1本（2200 rune 上限、
+    リンクは踏めない）なので、YouTube の説明文とは別物を投稿時に組む。
+    """
+    if not TIKTOK_OPEN_ID:
+        # open_id が空のまま作ると、投稿の直前に
+        # tiktok.assert_expected_account が必ず弾く。そこまでに音声合成と
+        # 動画合成を済ませており、しかも表示される理由（meta.json に
+        # expected_tiktok_open_id がありません）は原因から遠い。作る前に止める。
+        raise TikTokNotConfigured(
+            "TikTok の投稿先アカウントが分かりません（tiktok_token.json が"
+            "ありません）。python scripts/upload_tiktok.py --auth-only で"
+            "認証してから --tiktok-script を使ってください")
+    (workdir / "meta.json").write_text(json.dumps({
+        "id": workdir.parent.name,
+        "title": script.title[:100],
+        "tags": script.tags,
+        "expected_tiktok_open_id": TIKTOK_OPEN_ID,
+        "source_url": evidence["source_url"],
+        "source_context": evidence["context"],
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def build_tiktok_variant(workdir: Path, script, evidence: dict) -> Path:
+    """TikTok 用の 70〜80秒版を work/<id>/tiktok/ に作る。
+
+    写真・ライセンス・レシピは題材のディレクトリと共有する（同じ一次資料・
+    同じ引用カードなので二重に持たない）。台本・音声・テロップ・mp4 だけが
+    バリアント側にある。
+
+    尺の窓は TikTok 用（68〜80秒）を音声合成と動画の検証の**両方**に渡す。
+    片方だけだと、ショートの窓（56〜61秒）で毎回「範囲外」の警告が出て、
+    本物の異常（無音・合成失敗）がその警告に埋もれる。
+    """
+    variant = workdir / "tiktok"
+    variant.mkdir(parents=True, exist_ok=True)
+    (variant / "script.json").write_text(
+        script.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    write_tiktok_meta(variant, script, evidence)
+
+    synthesize(script.narration, variant / "voice.wav",
+               target_min=tiktok.TIKTOK_TARGET_MIN,
+               target_max=tiktok.TIKTOK_TARGET_MAX)
+    build(variant, assets_dir=workdir, recipe_id=workdir.name,
+          target_min=tiktok.TIKTOK_TARGET_MIN,
+          target_max=tiktok.TIKTOK_TARGET_MAX)
+    return variant
+
+
+def try_build_tiktok_variant(workdir: Path, script, evidence: dict) -> Path | None:
+    """バリアントを作る。失敗しても None を返すだけで、例外を上げない。
+
+    TikTok 側の失敗（VOICEVOX・ffmpeg・ディスク）で YouTube の予約まで
+    落とさないため。YouTube は 90日3本の収益化条件を抱えており、1本落とす
+    損失のほうが大きい。TikTok は次の実行で作り直せる。
+    """
+    try:
+        return build_tiktok_variant(workdir, script, evidence)
+    except Exception as e:                        # noqa: BLE001
+        print(f"! TikTok バリアントを作れませんでした（YouTube 側は続けます）: "
+              f"{workdir.name}: {e}")
+        return None
+
+
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
                     help="台本・音声・動画までは作るが、YouTubeへのアップロードは行わない")
@@ -304,10 +401,15 @@ def main() -> None:
                     help="台本を生成せず、このJSONファイルの文章を使う"
                          "（Anthropic の認証が無い環境で1本作るとき）。"
                          "--keyword か --only と一緒に指定する")
+    ap.add_argument("--tiktok-script", metavar="PATH", default=None,
+                    help="TikTok 用（410〜450字・70〜80秒）の台本。"
+                         "指定すると work/<id>/tiktok/ にバリアントを作り、"
+                         "同じ枠の時刻に投稿するキューへ積む。"
+                         "--script と一緒に指定する")
     ap.add_argument("--candidates", type=int, default=20, metavar="N",
                     help="RSSから取り直す候補の件数（既定20）。"
                          "--only で21位以下の題材を選んだときに広げる")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if a.limit is not None and a.limit < 1:
         # 黙って通すと slots が空になり、「対象の枠は過ぎています」という
         # 実際とは違う理由を表示して終わる。
@@ -328,8 +430,19 @@ def main() -> None:
         ap.error("--keyword と --only は同時に指定できません"
                  "（どちらも題材の選び方を決める引数です）")
 
+    if a.tiktok_script and not a.script:
+        # TikTok 版だけ人の原稿、YouTube 版はモデル生成、という食い違いを
+        # 作らない。同じ題材の2本が別の一次資料に基づく事態を防ぐ。
+        ap.error("--tiktok-script は --script と一緒に指定してください"
+                 "（同じ題材の2つの尺の原稿です）")
+
     if a.script:
         a.limit = 1
+    return a
+
+
+def main() -> None:
+    a = parse_args()
 
     # empty_streak の判定に使う「今日」。EXIT_NO_TOPIC 分岐（早期return）と
     # 通常終了時の両方から _bump_empty_streak を呼ぶため、ここで一度だけ
@@ -554,6 +667,12 @@ def main() -> None:
             try:
                 script = (load_script(a.script, recipe["evidence"])
                           if a.script else write(recipe))
+                # TikTok 版も**同じ一次資料**に対して書かれていることを、
+                # ここで同じ ScriptMismatch の経路で確かめる。片方だけ
+                # 別の題材に対する原稿だと、同じ画面に別の話が乗る。
+                tiktok_script = (load_tiktok_script(a.tiktok_script,
+                                                    recipe["evidence"])
+                                 if a.tiktok_script else None)
             except ScriptMismatch as e:
                 # 原稿が書かれた発言と、今回当たった発言が違う（あるいは
                 # ファイルが読めない）。次の題材に進んでも同じ理由で失敗する
@@ -606,6 +725,12 @@ def main() -> None:
                 _write_meta(workdir, script, license_, recipe["evidence"])
                 build(workdir)
 
+                # TikTok バリアント（70〜80秒）。写真とレシピは共有する。
+                # 失敗しても None が返るだけで、YouTube の予約は続く。
+                variant = (try_build_tiktok_variant(
+                    workdir, tiktok_script, recipe["evidence"])
+                    if tiktok_script else None)
+
                 if not a.dry_run:
                     subprocess.run([sys.executable, "scripts/upload_youtube.py",
                                     str(workdir)], check=True, cwd=ROOT)
@@ -630,6 +755,18 @@ def main() -> None:
                             [sys.executable, "scripts/upload_youtube.py",
                              str(workdir), "--schedule", slot.isoformat()],
                             check=True, cwd=ROOT)
+
+                        # YouTube の予約が通ってから積む。先に積むと、
+                        # 予約に失敗して作り直した題材が TikTok にだけ
+                        # 出てしまう。定時タスク（post_tiktok_due.py）が
+                        # この時刻に実際に投稿する。
+                        if variant is not None:
+                            tiktok_queue.enqueue(
+                                ROOT / "state",
+                                str(variant.relative_to(ROOT)), slot)
+                            print(f"- TikTok: {variant.relative_to(ROOT)} を "
+                                  f"{slot.strftime('%m/%d %H:%M')} の"
+                                  "キューに積みました")
             except Exception as e:                # noqa: BLE001
                 # アップロード済みなら、失敗しても既出に入れる。入れないと
                 # 翌日また同じ題材を処理し、同じ動画がもう1本 YouTube に並ぶ。

@@ -45,6 +45,8 @@ python scripts/yield_report.py                # 採用ゲートの歩留まり�
 python scripts/relevance_eval.py              # 見出しと引用の関連性を独立に採点（要API認証）
 python scripts/unpublish.py <video_id>        # 公開後の事故を即座に戻す
 python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
+python scripts/upload_tiktok.py --auth-only   # TikTok の認証と審査状態の確認
+python scripts/post_tiktok_due.py --dry-run   # TikTok の投稿待ちを見る
 ```
 
 ## 環境で引っかかること
@@ -58,6 +60,30 @@ python scripts/upload_youtube.py --auth-only  # 認証チャンネルの確認
 - **アップロード直後の `videos.list` は `tags` や `status.publishAt` が欠けて返ることがある。**
   予約が外れたと判断する前に必ず引き直すか YouTube Studio を見る。
   **理由**: ここで `unpublish.py` → 作り直しに走ると、無事な動画を1本捨てる。
+
+## TikTok（縦・約75秒）
+
+2026-08-30 に追加。**同じ一次資料・同じ引用から、本文だけを長く書いた
+70〜80秒版**を `work/<id>/tiktok/` に作り、YouTube の枠と同じ時刻に投稿する。
+設計は [`docs/superpowers/specs/2026-08-30-tiktok-posting-design.md`](docs/superpowers/specs/2026-08-30-tiktok-posting-design.md)。
+
+- **60秒を割ったら投稿しない**（`tiktok.TIKTOK_MIN_SECONDS = 61.0`）。
+  **理由**: TikTok の Creator Rewards は60秒以上の動画だけが対象で、これが
+  最も多い失格理由。59秒版は投稿自体は通るので、止めないと「成功ログだけ出て
+  価値ゼロ」の本数が静かに積み上がる。**この下限を下げない。**
+- **審査が下りるまで投稿しない**（`creator_info` の `privacy_level_options` に
+  `PUBLIC_TO_EVERYONE` が無ければ止める）。**理由**: 未審査クライアントの投稿は
+  すべて SELF_ONLY に強制される。APIは成功を返すので、誰にも届かない動画を
+  成功ログ付きで作り続けることになる。経路確認だけなら `--allow-self-only`。
+- 台本は `--tiktok-script`（410〜450字）。**`--script` と一緒に指定する。**
+  片方だけ人の原稿だと、同じ題材の2本が別の一次資料に基づきうる。
+- **`run_daily.py` は TikTok API を触らない。** 枠の時刻はキュー
+  （`state/tiktok_queue.json`）に積むだけで、投稿は `post_tiktok_due.py` が
+  07:25 / 18:25 の定時タスクで行う。**理由**: Direct Post API に予約投稿が無い。
+  分けてあるので TikTok が落ちても YouTube の予約は無傷。
+- **`state/tiktok_*.json` も手で編集しない**（`published.json` と同じ理由）。
+- PKCE の `code_challenge` は **hex エンコードの SHA256**。一般的な
+  base64url の実装をそのまま使うと認可サーバに拒否される。
 
 ## 長尺（16:9・約4分）
 

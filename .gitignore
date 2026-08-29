@@ -27,3 +27,10 @@ __pycache__/
 *.pyc
 .venv/
 *.bak
+
+# TikTok の認証情報（client_secret.json / token.json と同じ扱い）
+tiktok_client.json
+tiktok_token.json
+tiktok_client.json.*
+tiktok_token.json.*
+tiktok.log

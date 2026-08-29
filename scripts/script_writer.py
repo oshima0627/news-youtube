@@ -127,6 +127,22 @@ SEGMENT_MAX_CHARS = 450
 SEGMENT_SPAN = f"{SEGMENT_MIN_CHARS}〜{SEGMENT_MAX_CHARS}字"
 
 
+# ── TikTok バリアント ──────────────────────────────────────────
+#
+# TikTok の Creator Rewards Program は 60秒以上の動画だけを対象にしており、
+# 59秒のショートはすべて対象外になる。同じ一次資料・同じ引用から、本文だけを
+# 長く書いた 70〜80秒版を別に作る。
+#
+# 字数は長尺の1章と同じ幅（同じ SECONDS_PER_CHAR で同じ窓を狙うため結果的に
+# 一致する）だが、**別の定数として持つ**。長尺の章の長さを変えたときに
+# TikTok 版まで黙って動くと、投稿の下限（tiktok.TIKTOK_MIN_SECONDS）を
+# 割ったことに気づけない。窓との対応は tests/test_tiktok.py が縛っている。
+TIKTOK_MIN_CHARS = 410
+TIKTOK_MAX_CHARS = 450
+
+TIKTOK_SPAN = f"{TIKTOK_MIN_CHARS}〜{TIKTOK_MAX_CHARS}字"
+
+
 class SegmentScript(BaseModel):
     """長尺の1章ぶん。1題材＝1つの一次資料に対応する。"""
 
@@ -366,6 +382,26 @@ def load_script(path, evidence: dict) -> Script:
             {k: v for k, v in raw.items() if k != "source_url"})
     except ValidationError as e:
         raise ScriptMismatch(f"台本ファイルの項目が足りません: {path}（{e}）") from e
+
+
+def load_tiktok_script(path, evidence: dict) -> Script:
+    """人が書いた TikTok 用の台本（410〜450字）を読む。
+
+    `load_script` と同じ検証（source_url の突き合わせ）を**同じ関数を呼んで**
+    通す。判定を2箇所に書くと、片方だけが緩くなって「Aの発言の出典が付いた
+    画面にBの発言の原稿が乗る」が TikTok 側だけで起きる。
+
+    違うのは字数だけ。ここで弾かないと、61秒に届かない動画ができて投稿の
+    関門（tiktok.assert_over_a_minute）で止まり、そこまでの音声合成と
+    動画合成が無駄になる。**読んだ時点で止める。**
+    """
+    script = load_script(path, evidence)
+    chars = len(script.narration)
+    if not (TIKTOK_MIN_CHARS <= chars <= TIKTOK_MAX_CHARS):
+        raise ScriptMismatch(
+            f"TikTok 用の本文は{TIKTOK_SPAN}にしてください（この台本は{chars}字）。"
+            f"{path} がショート用（{NARRATION_SPAN}）ではないか確認してください")
+    return script
 
 
 def _parse(system: str, prompt: str, output_format):
