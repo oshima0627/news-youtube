@@ -1,202 +1,178 @@
 # HANDOFF
 
-最終更新: 2026-08-27（セッション: `--script` 追加 → 9/1 まで枠を埋め、流入元と視聴維持率を実測し、1本を公開に戻した）
+最終更新: 2026-08-30（セッション: TikTok 投稿の実装。1分超バリアントを作る経路を通した）
 
 ## いま何をしているのか
 
-**Anthropic の認証がこのPCに無い状態で、チャンネルの運営を回している。**
-台本の文章は対話セッション（Claude Code）が書き、`--script` でパイプラインに渡す。
-それ以外（採用ゲート・引用カードの検証・音声合成・動画合成・予約投稿）は従来の経路。
+**TikTok にも投稿できるようにした。** ショートと同じ一次資料・同じ引用から、
+本文だけを長く書いた **70〜80秒版**を `work/<id>/tiktok/` に作り、YouTube の枠と
+同じ時刻に Direct Post API で投稿する。
 
-**枠は 2026-09-01 18:30 JST まで埋まっている（予約11本）。次の空きは 9/2 07:30 JST。**
+コードとテストは完成して全経路を通した。**ただし実投稿はまだ1本もしていない。**
+このPCに TikTok の認証情報が無く、`video.publish` の審査も出していないため
+（下記「次にやること」の1〜2）。
 
-## 予約の全量（2026-08-27 15:20 時点、`state/published.json`）
-
-| 公開予定（JST） | video id | 題材 |
-|---|---|---|
-| 08-27 18:30 | 8ebRhoO41tM | ベルギー外交160周年（**再公開。下記の注記**） |
-| 08-28 07:30 | NFjiJ0U54ZI | 最低賃金と「壁」 |
-| 08-28 18:30 | xNkyuxioRJk | ガソリン価格「G7で最も安い水準」 |
-| 08-29 07:30 | hMJkj8UMZjg | 奨学金「四人に一人が返済中」 |
-| 08-29 18:30 | -4cbnhI5wVA | 出産費用の無償化・産科4割赤字 |
-| 08-30 07:30 | EBnFdZpSwsc | 参政党「六十点から七十点」 |
-| 08-30 18:30 | **8zGOoD1GhUQ** | ビザ手数料 3000円→1万5000円（`--script`） |
-| 08-31 07:30 | **myjKRuLTmXw** | 教員不足3827人・採用倍率2.9倍（`--script`） |
-| 08-31 18:30 | **hQm4LqOv18o** | 副首都の候補地・大阪に南海トラフのリスク（`--script`） |
-| 09-01 07:30 | **Awg7xxgeVJ4** | 個人情報の漏えい1万7139件・2割は不正目的のおそれ（`--script`） |
-| 09-01 18:30 | **S5_IhLateiw** | 防衛費GDP比2%＝11兆円、米は3.5%を要求（`--script`） |
+前セッションからの状況は変わっていない: **枠は 2026-09-01 18:30 JST まで埋まっている
+（予約11本）。次の空きは 9/2 07:30。** `ANTHROPIC_API_KEY` は無いので、台本は
+対話セッションが書いて `--script` で渡す運用のまま。
 
 ## 今回やったこと
 
-### 1. `run_daily.py --script PATH` を足した（新機能）
+### 1. TikTok 投稿の一式を実装した（TDD、新規104テスト）
 
-台本を生成せず、JSONファイルの文章を使う経路。**作り手だけを差し替え、それより
-後ろはモデルが書いた場合と完全に同じ経路を通る。**
+| ファイル | 役割 |
+|---|---|
+| `scripts/tiktok.py` | **投稿を止める判断だけ**を集めた。3つの関門と純関数 |
+| `scripts/tiktok_api.py` | HTTP クライアント。OAuth(PKCE)・init・アップロード・完了確認 |
+| `scripts/upload_tiktok.py` | 投稿CLI。`post()` に全経路が入る |
+| `scripts/post_tiktok_due.py` | 定時タスクの入口。枠が来たものを投げる |
+| `scripts/tiktok_queue.py` | `state/tiktok_queue.json` / `tiktok_posted.json` |
 
-- `scripts/script_writer.py`: `load_script(path, evidence)` と `ScriptMismatch` を追加。
-  台本ファイルには Script の全項目に加えて **`source_url` を必須**にし、実行時に
-  `evidence.collect()` が選んだ一次資料と一致しなければ受け付けない。
-- `scripts/run_daily.py`: `--script` を追加。`--keyword` か `--only` が無ければ
-  `ap.error`。`--limit 1` 以外との併用も拒否。`ScriptMismatch` は実行ごと中止。
-- テスト: `tests/test_script_writer.py` に6件、`tests/test_run_daily.py` に4件追加。
+既存への変更（**既定の引数は現在の挙動そのままで、既存の呼び出しは変わらない**）:
 
-### 2. その経路で5本作って予約した
+- `scripts/build_short.py`: `resolve_sources()` を切り出し、`build()` に
+  `assets_dir` / `recipe_id` / `target_min` / `target_max` を追加
+- `scripts/script_writer.py`: `TIKTOK_MIN_CHARS=410` / `TIKTOK_MAX_CHARS=450` と
+  `load_tiktok_script()`（`load_script` を呼ぶので source_url の検証は共通）
+- `scripts/run_daily.py`: `--tiktok-script`、`parse_args()` の切り出し、
+  `write_tiktok_meta()` / `build_tiktok_variant()` / `try_build_tiktok_variant()`
+- `CLAUDE.md`、`.gitignore`（`tiktok_client.json` / `tiktok_token.json`）
+- 仕様書: `docs/superpowers/specs/2026-08-30-tiktok-posting-design.md`
+
+### 2. 実際に動画を1本作って、投稿経路を最後まで通した
 
 ```bash
-python scripts/run_daily.py --keyword "査証 手数料"     --script <台本.json> --days-ahead 3 --limit 1
-python scripts/run_daily.py --keyword "教員 不足"       --script <台本.json> --days-ahead 4 --limit 1
-python scripts/run_daily.py --keyword "副首都 大阪"     --script <台本.json> --days-ahead 4 --limit 1
-python scripts/run_daily.py --keyword "個人情報 漏えい" --script <台本.json> --days-ahead 5 --limit 1
-python scripts/run_daily.py --keyword "防衛費 国内総生産" --script <台本.json> --days-ahead 5 --limit 1
+python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
+  --script <短尺台本.json> --tiktok-script <TikTok台本.json> \
+  --dry-run --days-ahead 3 --limit 1
 ```
-
-台本を書く前に、`C:\Users\oshim\AppData\Local\Temp\claude\check_telop.py` で
-**全テロップ行の描画幅を測ってから**本文を確定している（下記の欠陥を踏まないため）。
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 435 passed**（`--script` / `retention_report.py` / `--publish-id` の追加後）。
-- **5本とも予約が通った。API で引き直して確認した**（アップロード直後は欠けて返るため）:
+- **`pytest` 539 passed**（前回 435 → 今回 +104）。警告なし。
+- **同じ題材から2本ビルドできた**（`work/1d04e9d8cd04/`）:
 
   ```
-  8zGOoD1GhUQ PT59S private 2026-08-30T09:30:00Z （= 8/30 18:30 JST）
-  myjKRuLTmXw PT59S private 2026-08-30T22:30:00Z （= 8/31 07:30 JST）
-  hQm4LqOv18o PT59S private 2026-08-31T09:30:00Z （= 8/31 18:30 JST）
-  Awg7xxgeVJ4 PT59S private 2026-08-31T22:30:00Z （= 9/1 07:30 JST）
-  S5_IhLateiw PT59S private 2026-09-01T09:30:00Z （= 9/1 18:30 JST）
+  試行1: speedScale=0.945 → 実尺58.67秒（許容範囲内）
+    尺: voice.wav 58.67秒 → video.mp4 58.67秒（差 +0.00秒）  テロップ22枚
+  試行1: speedScale=0.949 → 実尺74.14秒（許容範囲内）
+    尺: voice.wav 74.14秒 → video.mp4 74.17秒（差 +0.02秒）  テロップ28枚
   ```
 
-  `S5_IhLateiw` は1回目の照会で `duration=P0D` が返ったが、処理完了後に
-  引き直して `PT59S / processed` を確認した（既知の API の癖）。
-
-- **尺は5本とも58.4〜58.7秒**（`voice.wav` と `video.mp4` の差 +0.03秒以内）。
-- **一次資料と見出しの噛み合いは5本とも人が見て確認した**（引用そのものに見出しの
-  数字が入っている）:
-  - ビザ: 参議院法務委員会 2026-05-28 横山信一 /txt/122115206X01120260528/103
-  - 教員: 参議院決算委員会 2026-05-27 竹内真二 /txt/122114103X00520260527/133
-  - 副首都: 衆議院地域活性化・こども政策・デジタル社会形成に関する特別委員会
-    2026-07-15 向山好一 /txt/122105367X01420260715/22
-  - 漏えい: 参議院デジタル社会の形成及び人工知能の活用等に関する特別委員会
-    2026-07-08 郡山りょう /txt/122115385X00820260708/55
-  - 防衛費: 参議院本会議 2025-11-06 小池晃 /txt/121915254X00420251106/23
-- **画像**: ビザ＝横山信一、副首都＝向山好一、防衛費＝小池晃（Commons、被写体一致）。
-  教員・漏えい＝**発言者の写真が無く汎用の国会議事堂画像**（設計どおりのフォールバック）。
-- **テロップのはみ出しは5本とも0**（測定して確定。ビザの初回ビルドでは
-  `1978年以来値上げされていない」。` が1140px＝画面外に出ていたので書き換えた）。
-- **`zC8OJmUT9Us` を公開に戻した**（2026-08-27、本人の指示）。実行と確認:
+  **TikTok版は 74.17秒。** ffprobe で実測し、`tiktok.assert_over_a_minute` を
+  通過することを確認した。
+- **投稿経路を実物で最後まで通した**（送信先の API だけ差し替え。それ以外＝
+  尺の測定・3つの関門・キャプション生成・完了確認・キューの記録は本番と同じコード）:
 
   ```
-  python scripts/upload_youtube.py --publish-id zC8OJmUT9Us
-  ✓ 公開しました: https://www.youtube.com/watch?v=zC8OJmUT9Us
-  → API で引き直し: privacyStatus=public / viewCount 1147 / likeCount 4
-  → published.json も privacy_status=public に更新済み（手では触っていない）
+  publish_id: publish-sim-1 / privacy_level: PUBLIC_TO_EVERYONE
+  duration: 74.166667 / status: PUBLISH_COMPLETE
+  source_info: {"video_size": 3036922, "chunk_size": 3036922, "total_chunk_count": 1}
+  キュー: 枠前(07:00)→[] / 枠後(07:30)→[work/1d04e9d8cd04/tiktok] / 投稿後→[]
   ```
 
-- **チャンネルは生きている**: `viewCount 1,325,814 / subscriberCount 2,880 /
-  videoCount 198`、`isChannelMonetizationEnabled: false`。
-### 長尺と視聴維持率の実測（2026-08-27、`retention_report.py` の出力）
-
-- **チャンネルの再生の96%はショートのフィードから来ている**（2026-08-12〜08-27）:
+- **キャプションは 153 runes**（上限2200）。中身:
 
   ```
-  62803  96.0%  SHORTS
-   1318   2.0%  YT_SEARCH
-    650   1.0%  YT_OTHER_PAGE
-    369   0.6%  SUBSCRIBER
-      1   0.0%  RELATED_VIDEO
+  新潟県は医師偏在指標で全国第四十四位 参院決算委で問われた医師不足
+
+  根拠: 第221回国会 参議院決算委員会 2026-07-06 小林一大
+  https://kokkai.ndl.go.jp/txt/122114103X00920260706/35
+
+  #医師不足 #医師偏在 #地域医療 #新潟県 #国会
   ```
 
-- **長尺 `UqjB--sNTKk` は 8/19〜8/27 で 0 再生**（Analytics が行を返さない）。
-  通算2再生は公開当日ぶん。
-- **関連動画は15日間で合計1再生。** ショート38本に長尺を紐づけた作業
-  （2026-08-26）は、**回遊をほぼ生んでいない**。
-- → **長尺の不振は題材でもサムネイルでもない。乗る面が無い。**
-  「題材かサムネイルか」という問いの立て方自体が外れていた。
-
-- **ショートの再生数は視聴維持率と一緒に動いている**（同期間、パイプライン産29本）:
-  維持率78%以上の5本だけが 2,992〜14,312 に伸び、それ未満は 1,062〜2,383 の
-  帯に収まっている。1,100前後が床。
-  - 100%超（ループ）: 食料品の消費税1%＝152.8% / G7の食料品税率＝137.1% /
-    GPIF利回り＝106.9% / 2000万円の証言＝102.8%
-  - 50%未満: SNS年齢確認＝35.8% / なりすまし広告＝47.1% / 拉致啓発＝47.1%
-  - **仮説（未検証）**: 家計に直結する金額の回は伸び、制度の手続きの回は伸びない。
-- **`R_dirwcTjqs`（26再生）の理由が説明できた。** 維持率32.8%で**全体最低**。
-  流入は `SHORTS` 19 + `YT_SEARCH` 6。フィードには乗ったが、そこで止まっている。
-  配信制限ではなく、維持率での打ち切りとみるのが自然（**推測**）。
-- **ローカルの `watch_channel.py` は HTTP 404 で失敗する。** 別チャンネルの feed も
-  同じく404、かつ **GitHub Actions の watchdog は 8/26 まで success**。
-  → チャンネルの異常ではなく、**この回線から YouTube の RSS が引けないだけ**。
+- **画面を目視で確認した**（`stage.png` と `frames/002.png`）。被写体は
+  小林一大本人（防衛省 / CC BY 4.0）で発言者と一致。引用カードは
+  「医師偏在指標で全国第44位」で逐語引用の部分文字列。
+- **テロップのはみ出しは実質なし。** 両版とも最大右端 1054px で、画面幅 1080px の
+  **内側**（許容線 1016px は超えるが、`。` が余白に入るだけで文字は切れていない）。
+  目視でも確認済み。
+- **TikTok API の仕様を実際のドキュメントで確認した**:
+  - 未審査クライアントの投稿は全て SELF_ONLY に強制される
+  - Direct Post に `schedule_time` 相当のフィールドは**無い**
+  - キャプション上限 2200 UTF-16 runes、`creator_info/query` を先に呼ぶ必要あり
+  - PKCE の `code_challenge` は **hex エンコードの SHA256**（base64url ではない）
+  - アクセストークン24時間 / リフレッシュトークン365日
+  - Creator Rewards: 60秒以上・フォロワー1万人・直近30日10万再生・個人アカウント
 
 ## 未検証のもの
 
-- **`ANTHROPIC_API_KEY` は無い。** `--script` を使わない `run_daily.py` /
-  `run_long.py` は動かない（`ScriptWriterUnavailable` で中止）。
-  **つまり無人の日次実行（schtasks）は現状できない。** 枠を埋めるには
-  対話セッションで台本を書く必要がある。
-- **`--script` で作った5本が実際に公開されるかは未確認**（最初は 8/30 18:30）。
-- **`S5_IhLateiw`（防衛費）は共産党議員の質問を扱っている。** 数字（11兆円・21兆円・
-  4倍）と問いをそのまま出しており、賛否は書いていないが、**政治的に一方の立場から
-  出た発言であることは題材の性質として残る**。公開後の反応は未観測。
-- **数字の表記が混ざる回がある。** `S5_IhLateiw` のテロップに「50分の一」が出る
-  （`normalize_numerals` は「五十」を50に直すが、単独の「一」は漢字のまま残す）。
-  読み上げは正しい。作り直すほどではないと判断したが、台本で「〜分の一」は
-  避けたほうがきれいに出る。
-- **`myjKRuLTmXw`（教員不足）は本文で「小中高校生の自殺者数も538人」に触れている。**
-  一次資料の逐語からの引用だが、配信制限がかかる可能性は否定できない。
-  **8/31 以降に再生数を見て、他の回（約1,200）と比べること。**
-  `R_dirwcTjqs` の26再生と同じ挙動が出るなら、題材ではなく配信側の要因を疑える。
-- **新しい3本には「関連動画」を設定していない。** 長尺への導線は38本張っても
-  2再生だったので、費用対効果が見えるまで手作業を増やさない判断。
-- `8ebRhoO41tM`（本日18:30に再公開）の経緯は推測のまま。本人の判断でそのままにした。
-- **テロップの禁則処理は直していない。** `draw.wrap()` は行頭禁則で行が幅を
-  超えることを許しており、`」` `。` が続くと画面外に出る。既存448行のうち1行
-  （公開済みの `work/b3f6f9e5cd12`）が同じ状態。**別タスクとして切り出してある。**
+- **TikTok に1本も投稿していない。** 認証情報（`tiktok_client.json`）が無く、
+  `video.publish` の審査も出していない。HTTP を実際に投げる部分
+  （`tiktok_api.TikTokApi` の `creator_info` / `publish` / `_fetch_status` と
+  `authorize()` の OAuth 往復）は**一度も本物のサーバに当たっていない**。
+- **Content Posting API が個人アカウントで使えるかは未確認。** Business
+  アカウント必須だと Creator Rewards（個人アカウント必須）と両立しない。
+  **審査を出す前にここを確かめること。**
+- **`work/1d04e9d8cd04/tiktok/meta.json` の `expected_tiktok_open_id` は空。**
+  認証前に作ったため。**このバリアントはこのままでは投稿できない**
+  （アカウント取り違えガードが弾く）。認証後に作り直すこと。
+- 今回の題材（医師偏在）は YouTube にも投稿していない（`--dry-run`）。
+  枠に載せるなら作り直しになる。
+- 定時タスク（schtasks）はまだ登録していない。
 
 ## 次にやること
 
-1. **9/2 以降の枠を埋める**（空きは 9/2 07:30 から）。手順は上と同じ:
+1. **TikTok 開発者アプリを作る**（人にしかできない）。
+   - TikTok for Developers でアプリ登録 → Content Posting API を追加 →
+     Direct Post を有効化
+   - **プライバシーポリシーと利用規約の公開URL**を用意する（審査に必須）
+   - リダイレクトURI に `http://localhost:8723/callback` を登録する
+     （`tiktok_api.authorize` の既定。**文字列が一致しないと同意画面で落ちる**）
+   - `client_key` / `client_secret` をリポジトリ直下の `tiktok_client.json` に置く
+     （`.gitignore` 済み。コミットしないこと）
+
+2. **認証して、審査状態を見る**:
 
    ```bash
-   python scripts/run_daily.py --keyword "<2語以上>" --script <台本.json> --days-ahead 6 --limit 1
+   python scripts/upload_tiktok.py --auth-only
    ```
 
-   台本JSONの書式は `scripts/script_writer.load_script` の docstring と
-   `tests/test_script_writer.py` の `HAND_WRITTEN`。**`source_url` 必須。**
-   実測済みで未使用の検索語候補（`is_admissible: True`）:
-   `医師 偏在`（丸尾なつ子・衆院厚労委 2026-07-15、医薬品の供給偏在。数字は無い）、
-   `外国人 土地`（神谷宗幣・両院国家基本政策委員会合同審査会 2026-07-15、骨太方針）。
-   `食料 自給率` は**直近14日の題材と衝突する**ので使えない。
+   `選べる公開範囲` に `PUBLIC_TO_EVERYONE` が出れば審査済み。出なければ
+   `video.publish` の審査を申請する。**審査が下りるまで実投稿はしない**
+   （投稿しても全部 SELF_ONLY になる）。
 
-   台本を書く手順（毎回これを踏む）:
-   1. `collect(<検索語>)` の先頭（既出を除く）を見て、逐語引用を全文読む
-   2. **引用に入っている事実だけ**で本文を書く（330〜355字）。ニュース側の事実を足さない
-   3. `quote_excerpt` は逐語引用の**部分文字列**にする（25字以内）
-   4. `check_telop.py` で全テロップ行の幅を測り、はみ出し0を確認してからビルド
+3. **審査が下りたら、1本作って投稿する**:
 
-2. **8/30 18:30 に `8zGOoD1GhUQ` が公開されたか見る。** `--script` 経路の初公開。
+   ```bash
+   python scripts/run_daily.py --keyword "<2語以上>" \
+     --script <短尺台本.json> --tiktok-script <TikTok台本.json> \
+     --days-ahead <N> --limit 1
+   python scripts/post_tiktok_due.py --dry-run    # キューを確認
+   ```
 
-3. **8/31 以降に `myjKRuLTmXw` の再生数を他の回と比べる**（上記の配信制限の検証）。
+   TikTok台本は **410〜450字**（`load_tiktok_script` が範囲外を拒否する）。
+   短尺は従来どおり330〜355字。`source_url` は両方に必須で、一致しないと中止。
 
-4. **`ANTHROPIC_API_KEY` を用意すれば無人運転に戻せる。** `--script` は残してよい。
+4. **定時タスクを登録する**（枠の時刻に実際に投げる）:
 
-5. **長尺は当面作らない**（測定に基づく推奨）。乗る面が無く、関連動画からの
-   回遊も15日で1再生。既存の `UqjB--sNTKk` は放置してよい（害は無い）。
-   再開するなら、先に「ショート以外の面から再生が来る状態」を作るのが順序。
+   ```
+   schtasks /create /tn "tiktok-0725" /sc daily /st 07:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
+   schtasks /create /tn "tiktok-1825" /sc daily /st 18:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
+   ```
 
-6. **題材選びを維持率で回す。** 次のセッションで
-   `python scripts/retention_report.py` を先に走らせ、直前の回の維持率を見てから
-   題材を決める。仮説は「家計に直結する金額の回が伸びる」。
-   `--script` で作った5本（8/30〜9/1公開）が最初の答え合わせになる。
+5. **9/2 以降の YouTube の枠を埋める**（空きは 9/2 07:30 から）。手順は従来どおり。
+   実測済みで未使用の検索語: `医師偏在指標 新潟`（今回書いた台本2本がそのまま使える。
+   scratchpad に置いたので消える。必要なら書き直す）、`外国人 土地`。
+
+6. **8/30 18:30 に `8zGOoD1GhUQ` が公開されたか見る**（`--script` 経路の初公開）。
+
+7. **8/31 以降に `myjKRuLTmXw`（教員不足）の再生数を他の回と比べる**
+   （自殺者数に触れているため配信制限の可能性。他の回は約1,200）。
 
 ## 触ってはいけないところ
 
-- 採用ゲート（`evidence.collect()`）を緩めない。**`--script` は台本の作り手を
-  変えるだけ。ここを迂回する経路を足さない。**
-- 台本ファイルの `source_url` 必須をやめない。突き合わせが無いと、別の発言の
-  出典キャプションが付いた画面に無関係な原稿が乗る。
-- **台本を書いたら `check_telop.py` で幅を測ってからビルドする。** 測らないと
-  画面外に文字が出る回が混ざる。
-- `state/*.json` を手で編集しない。
-- **ローカルの `watch_channel.py` の 404 を「チャンネルが止まった」と読まない。**
-  判定は GitHub Actions の watchdog を見る。
+- **`tiktok.TIKTOK_MIN_SECONDS`（61.0秒）を下げない。** 60秒を割った動画は
+  Creator Rewards の対象外で、投稿は通るので成功ログだけが積み上がる。
+- **未審査ガードを外さない。** `--allow-self-only` は経路確認専用。常用すると
+  誰にも見えない動画を作り続ける。
+- **採用ゲート（`evidence.collect()`）を緩めない。** TikTok 版も同じゲートを通る。
+  `load_tiktok_script` は `load_script` を呼んでおり、`source_url` の検証は共通。
+  **ここを迂回する経路を足さない。**
+- **`state/*.json` を手で編集しない**（`tiktok_queue.json` / `tiktok_posted.json` を含む）。
+- **`work/<id>/tiktok/` を投稿前に消さない。** キューが `video.mp4` を参照する。
+- **PKCE の `code_challenge` を base64url に変えない。** TikTok は hex の SHA256。
+- 長尺（16:9）は当面作らない。乗る面が無く、関連動画からの回遊も15日で1再生。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
+- ログを PowerShell で読むときは `Get-Content -Encoding UTF8`。

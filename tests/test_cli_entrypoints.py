@@ -28,6 +28,8 @@ CLI_ENTRYPOINTS = (
     "build_short.py",
     "build_long.py",
     "upload_youtube.py",
+    "upload_tiktok.py",
+    "post_tiktok_due.py",
     "unpublish.py",
     "run_daily.py",
     "run_long.py",
