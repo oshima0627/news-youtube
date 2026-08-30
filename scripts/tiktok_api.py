@@ -32,6 +32,16 @@ TOKEN_URL = f"{API}/oauth/token/"
 # 投稿に要るスコープ。creator_info/query も video.publish の配下にある。
 SCOPES = "user.info.basic,video.publish"
 
+# 認証の受け口。TikTok アプリの設定に**この文字列のまま**登録する必要がある。
+#
+# **アプリは「Desktop」として登録すること。** Web アプリとして登録すると
+# redirect URI に https しか許されず、localhost は拒否される。desktop app の
+# ときだけ localhost / 127.0.0.1 と http が通る。登録の種別を間違えると
+# 同意画面が redirect_uri のエラーで止まるが、返るメッセージからは
+# 「種別が違う」ことは読み取れない。
+DEFAULT_REDIRECT_PORT = 8723
+DEFAULT_REDIRECT_URI = f"http://localhost:{DEFAULT_REDIRECT_PORT}/callback"
+
 # 1リクエストで送れるチャンクの上限。これを超える動画は分割送信が要るが、
 # このパイプラインのショートは実測 3.9MB 以下（70〜80秒版でも十数MB）なので
 # 分割は実装しない。将来超えたときに黙って壊れないよう、上限で止める。
@@ -106,7 +116,7 @@ def token_from_response(data: dict, now: float | None = None) -> dict:
     return token
 
 
-def authorize(root: Path, port: int = 8723) -> dict:
+def authorize(root: Path, port: int = DEFAULT_REDIRECT_PORT) -> dict:
     """ブラウザで同意画面を開き、トークンを tiktok_token.json に保存する。
 
     TikTok は desktop app に PKCE を要求する。`code_challenge` が
@@ -118,13 +128,11 @@ def authorize(root: Path, port: int = 8723) -> dict:
     root = Path(root)
     client_path = root / "tiktok_client.json"
     if not client_path.exists():
-        raise TikTokAuthError(
-            f"{client_path.name} がありません。"
-            "TikTok for Developers で作った client_key / client_secret を"
-            "JSON で置いてください")
+        raise _missing_client(client_path)
     client = json.loads(client_path.read_text(encoding="utf-8"))
 
-    redirect_uri = f"http://localhost:{port}/callback"
+    redirect_uri = (DEFAULT_REDIRECT_URI if port == DEFAULT_REDIRECT_PORT
+                    else f"http://localhost:{port}/callback")
     verifier = new_code_verifier()
     state = secrets.token_urlsafe(16)
     received: dict = {}
@@ -182,6 +190,26 @@ def authorize(root: Path, port: int = 8723) -> dict:
         encoding="utf-8")
     print("✓ tiktok_token.json を保存しました（コミットしないこと）")
     return token
+
+
+def _missing_client(client_path: Path) -> "TikTokAuthError":
+    """認証情報が無いときの案内。**1箇所だけに書く。**
+
+    from_files と authorize の両方から出る。2箇所に書くと、実際に人が読むのは
+    先に落ちたほう（authorize）だけになり、片方にしかない注意
+    （Desktop で登録すること）が届かない。
+    """
+    return TikTokAuthError(
+                f"{client_path.name} がありません。次の順に用意してください:" + "\n"
+                "  1. TikTok for Developers でアプリを作る。**種別は Desktop**" + "\n"
+                "     （デスクトップアプリ）。Web で登録すると次の 3. が拒否される" + "\n"
+                "  2. Content Posting API を追加し、Direct Post を有効化する" + "\n"
+                f"  3. リダイレクトURIに {DEFAULT_REDIRECT_URI} を" + "\n"
+                "     **この文字列のまま**登録する（1文字でも違うと同意画面で止まる）" + "\n"
+                "  4. video.publish スコープの審査を申請する" + "\n"
+                f"  5. client_key と client_secret を {client_path.name} に" + "\n"
+                '     {"client_key": "...", "client_secret": "..."} の形で置く' + "\n"
+                "     （.gitignore 済み。コミットしないこと）")
 
 
 def upload_params(video_size: int) -> dict:
@@ -253,12 +281,7 @@ class TikTokApi:
         client_path = root / "tiktok_client.json"
         token_path = root / "tiktok_token.json"
         if not client_path.exists():
-            raise TikTokAuthError(
-                f"{client_path.name} がありません。\n"
-                "  TikTok for Developers でアプリを作り、Content Posting API を\n"
-                "  追加して Direct Post を有効化したうえで、client_key と\n"
-                "  client_secret を JSON で置いてください\n"
-                "  （このファイルはコミットしないこと）")
+            raise _missing_client(client_path)
         client = json.loads(client_path.read_text(encoding="utf-8"))
         if not token_path.exists():
             raise TikTokAuthError(

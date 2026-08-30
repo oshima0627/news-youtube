@@ -84,6 +84,9 @@ python scripts/post_tiktok_due.py --dry-run   # TikTok の投稿待ちを見る
 - **`state/tiktok_*.json` も手で編集しない**（`published.json` と同じ理由）。
 - PKCE の `code_challenge` は **hex エンコードの SHA256**。一般的な
   base64url の実装をそのまま使うと認可サーバに拒否される。
+- **開発者アプリは「Desktop」で登録する。** Web で登録すると redirect URI に
+  https しか許されず `http://localhost:8723/callback` が拒否される。
+  返るのは redirect_uri のエラーだけで、原因が「登録の種別」だとは読み取れない。
 
 ## 長尺（16:9・約4分）
 
