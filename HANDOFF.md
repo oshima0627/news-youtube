@@ -1,6 +1,7 @@
 # HANDOFF
 
-最終更新: 2026-08-30（セッション: TikTok 投稿の実装。1分超バリアントを作る経路を通した）
+最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アカウント設定の依頼を受けたが、
+ログインとアプリ登録は本人にしかできないため、用意手順をツール側に埋め込んで止まっている）
 
 ## いま何をしているのか
 
@@ -88,11 +89,16 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 - **テロップのはみ出しは実質なし。** 両版とも最大右端 1054px で、画面幅 1080px の
   **内側**（許容線 1016px は超えるが、`。` が余白に入るだけで文字は切れていない）。
   目視でも確認済み。
+- **`pytest` 544 passed**（2026-08-31 時点。用意手順のテスト5件を追加）。
+- **`--auth-only` が出す案内を実際に画面で確認した**（`tiktok_client.json` が
+  無い状態で実行）。案内は `_missing_client()` の1箇所だけにある。
 - **TikTok API の仕様を実際のドキュメントで確認した**:
   - 未審査クライアントの投稿は全て SELF_ONLY に強制される
   - Direct Post に `schedule_time` 相当のフィールドは**無い**
   - キャプション上限 2200 UTF-16 runes、`creator_info/query` を先に呼ぶ必要あり
   - PKCE の `code_challenge` は **hex エンコードの SHA256**（base64url ではない）
+  - **Desktop アプリとして登録したときだけ** redirect URI に localhost と http が
+    使える。Web アプリは https 必須
   - アクセストークン24時間 / リフレッシュトークン365日
   - Creator Rewards: 60秒以上・フォロワー1万人・直近30日10万再生・個人アカウント
 
@@ -114,14 +120,24 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 
 ## 次にやること
 
-1. **TikTok 開発者アプリを作る**（人にしかできない）。
-   - TikTok for Developers でアプリ登録 → Content Posting API を追加 →
-     Direct Post を有効化
+1. **TikTok 開発者アプリを作る**（本人にしかできない。Claude はログインできない）。
+
+   手順は `python scripts/upload_tiktok.py --auth-only` が出す案内と同じ:
+
+   - TikTok for Developers でアプリを作る。**種別は Desktop（デスクトップアプリ）**。
+     **Web で登録すると redirect URI に https しか許されず、localhost が拒否される。**
+     これが最初の関門で、返るのは redirect_uri のエラーだけなので原因が読めない
+   - Content Posting API を追加し、Direct Post を有効化する
+   - リダイレクトURIに `http://localhost:8723/callback` を**この文字列のまま**登録
+     （`tiktok_api.DEFAULT_REDIRECT_URI`。1文字でも違うと同意画面で止まる）
    - **プライバシーポリシーと利用規約の公開URL**を用意する（審査に必須）
-   - リダイレクトURI に `http://localhost:8723/callback` を登録する
-     （`tiktok_api.authorize` の既定。**文字列が一致しないと同意画面で落ちる**）
-   - `client_key` / `client_secret` をリポジトリ直下の `tiktok_client.json` に置く
+   - `video.publish` スコープの審査を申請する
+   - `client_key` / `client_secret` をリポジトリ直下の `tiktok_client.json` に
+     `{"client_key": "...", "client_secret": "..."}` の形で置く
      （`.gitignore` 済み。コミットしないこと）
+
+   **アカウント固有の設定を手で書く場所は無い。** `expected_tiktok_open_id` は
+   認証後に `tiktok_token.json` から自動で読む（`run_daily._tiktok_open_id`）。
 
 2. **認証して、審査状態を見る**:
 
@@ -173,6 +189,8 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 - **`state/*.json` を手で編集しない**（`tiktok_queue.json` / `tiktok_posted.json` を含む）。
 - **`work/<id>/tiktok/` を投稿前に消さない。** キューが `video.mp4` を参照する。
 - **PKCE の `code_challenge` を base64url に変えない。** TikTok は hex の SHA256。
+- **`tiktok_api.DEFAULT_REDIRECT_URI` を変えたら、TikTok アプリ側の登録も同時に
+  直す。** 文字列が完全一致でないと同意画面で止まる。
 - 長尺（16:9）は当面作らない。乗る面が無く、関連動画からの回遊も15日で1再生。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
 - ログを PowerShell で読むときは `Get-Content -Encoding UTF8`。
