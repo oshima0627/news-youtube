@@ -184,3 +184,57 @@ def test_open_idが無い応答は認証エラーにする():
     with pytest.raises(api.TikTokAuthError):
         api.token_from_response({"access_token": "a", "expires_in": 86400},
                                 now=1000)
+
+
+# ── 登録時に間違えると認証が通らない項目を、エラーに書いておく ──
+
+def test_client_jsonが無いときのメッセージにデスクトップ登録を書く(tmp_path):
+    """Web アプリとして登録すると http://localhost が拒否される。
+
+    TikTok は Web アプリの redirect URI に https しか許さない。desktop app と
+    して登録したときだけ localhost / 127.0.0.1 と http が通る。ここを間違えると
+    同意画面が redirect_uri のエラーで止まり、原因が「登録の種別」だとは
+    メッセージからは分からない。**登録の前に読む場所に書いておく。**
+    """
+    with pytest.raises(api.TikTokAuthError) as e:
+        api.TikTokApi.from_files(tmp_path)
+    msg = str(e.value)
+    assert "デスクトップ" in msg or "Desktop" in msg
+
+
+def test_client_jsonが無いときのメッセージに登録するURIをそのまま出す(tmp_path):
+    """アプリ側に登録する文字列と authorize() が送る文字列は完全一致が要る。"""
+    with pytest.raises(api.TikTokAuthError) as e:
+        api.TikTokApi.from_files(tmp_path)
+    assert api.DEFAULT_REDIRECT_URI in str(e.value)
+
+
+def test_既定のリダイレクトURIはloopbackでポートを持つ():
+    assert api.DEFAULT_REDIRECT_URI.startswith("http://localhost:")
+    assert api.DEFAULT_REDIRECT_URI.endswith("/callback")
+
+
+def test_authorizeは既定のリダイレクトURIと同じ文字列を使う(tmp_path, monkeypatch):
+    """メッセージに出す文字列と、実際に送る文字列がずれないこと。"""
+    (tmp_path / "tiktok_client.json").write_text(
+        json.dumps({"client_key": "k", "client_secret": "s"}), encoding="utf-8")
+    sent = {}
+
+    def fake_authorize_url(client_key, redirect_uri, **kw):
+        sent["redirect_uri"] = redirect_uri
+        raise KeyboardInterrupt          # 同意画面まで行かせずに止める
+
+    monkeypatch.setattr(api, "authorize_url", fake_authorize_url)
+    with pytest.raises(KeyboardInterrupt):
+        api.authorize(tmp_path)
+    assert sent["redirect_uri"] == api.DEFAULT_REDIRECT_URI
+
+
+def test_authorizeの側でも同じ用意手順を出す(tmp_path):
+    """--auth-only は token が無いとき authorize() を先に呼ぶ。案内が2箇所に
+    分かれていると、実際に人が見るのは短いほうだけ、ということが起きる。"""
+    with pytest.raises(api.TikTokAuthError) as e:
+        api.authorize(tmp_path)
+    msg = str(e.value)
+    assert "Desktop" in msg
+    assert api.DEFAULT_REDIRECT_URI in msg
