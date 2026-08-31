@@ -24,6 +24,11 @@
 | Direct Post | **ON** |
 | Scopes | `user.info.basic` / `video.publish` / `video.upload`（Products を入れると自動で付く） |
 | Redirect URI | Desktop タブに `http://localhost:8723/callback`（`tiktok_api.DEFAULT_REDIRECT_URI` と完全一致させる） |
+| App icon | `docs/tiktok_app_icon.png`（1024x1024。テロップ帯と同じ三層） |
+| Web/Desktop URL | `https://kokkai-news-maruwakari.oshima6-27.workers.dev/` |
+| Terms of Service URL | `https://kokkai-news-maruwakari.oshima6-27.workers.dev/terms` |
+| Privacy Policy URL | `https://kokkai-news-maruwakari.oshima6-27.workers.dev/privacy` |
+| URL properties | URL prefix `https://kokkai-news-maruwakari.oshima6-27.workers.dev/` を **Verified** |
 
 ### App review の説明文（922/1000）
 
@@ -48,14 +53,40 @@ video.upload is bundled with the product but is not used; posting always goes
 through Direct Post.
 ```
 
-## まだ埋まっていない5項目
+## 3ページの配信（Cloudflare Workers）
+
+`site/` に置いてある。`cd site && npx wrangler deploy` で更新できる。
+
+| パス | 用途 |
+|---|---|
+| `/` | サービス説明（Web/Desktop URL） |
+| `/terms` | 利用規約 |
+| `/privacy` | プライバシーポリシー |
+| `/tiktok<code>.txt` | URL prefix 所有確認の署名ファイル |
+
+**ページの記述は実装と一致していなければならない。** 保存するトークンの種類と
+置き場所、要求するスコープ2つ、一次資料の扱いを書いてある。審査は
+「書いてある挙動」と「実際の挙動」の食い違いを見る。実装を変えたら
+`site/src/index.js` も同時に直す。
+
+連絡先は `info@nexeed-lab.com`。
+
+### 署名ファイルは画面から書き写さない
+
+**必ずダウンロードして中身をコピーする。** 実際に配られた1つ目の名前は
+`tiktoka8lrKl0...` で、**小文字のL（l）が大文字のI（I）と画面上で見分けられない**。
+書き写していたら検証に落ちていた。
+
+**URL prefix を変えると署名ファイルも変わる。** ドメイン名を
+`marukawari`（誤）→`maruwakari`（正）に直したとき、TikTok は別のコードを発行した。
+
+**デプロイ直後は旧内容が返ることがある**（エッジのキャッシュ）。`Verify` を
+押す前に `curl` で中身を確かめる。
+
+## まだ埋まっていない1項目
 
 | 項目 | 要件 | 誰が用意するか |
 |---|---|---|
-| App icon | 1024x1024px、5MB以下、JPEG/JPG/PNG。**公開表示される** | 未定 |
-| Terms of Service URL | 公開されている利用規約ページ | **本人**（作る必要がある） |
-| Privacy Policy URL | 公開されているプライバシーポリシーページ | **本人**（作る必要がある） |
-| Web/Desktop URL | このアプリ／サービスの公式サイト | **本人**（決める必要がある） |
 | デモ動画 | mp4/mov、50MB以下。TikTok連携の**端から端まで**を映す | **本人**（画面録画が要る） |
 
 ### デモ動画の条件（審査で最も落ちやすい）
@@ -77,3 +108,5 @@ through Direct Post.
 - **Redirect URI の「+ Add a URI」は2つ目の枠を足すボタン。** 1つ目は
   入力欄に打つだけでよい
 - 開発者ポータルは TikTok 本体とは**別アカウント**（メール＋パスワード）
+- **`workers.dev` は DNS を触れない**ので、所有確認は Domain（DNSレコード）ではなく
+  **URL prefix（署名ファイル）**を選ぶ

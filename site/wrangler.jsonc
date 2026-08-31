@@ -1,0 +1,8 @@
+{
+  // TikTok の審査に必要な3ページ（サービス説明・利用規約・プライバシーポリシー）
+  // を配信するだけの Worker。アプリ本体（scripts/）とは無関係で、
+  // ここに機能を足さない。
+  "name": "kokkai-news-maruwakari",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-25"
+}
