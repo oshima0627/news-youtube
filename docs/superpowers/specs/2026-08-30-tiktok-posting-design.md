@@ -58,10 +58,16 @@ schtasks（07:25 / 18:25）→ post_tiktok_due.py → due を過ぎた未投稿�
 
 1. **尺の下限** — mp4 の実尺が `TIKTOK_MIN_SECONDS`（61.0秒）未満なら投稿しない。
    60秒を割った動画は Creator Rewards の対象外で、成功ログだけが出て価値がゼロになる。
-2. **未審査ガード** — `creator_info/query` の `privacy_level_options` に
-   `PUBLIC_TO_EVERYONE` が無ければ投稿しない。未審査クライアントの投稿は
-   すべて SELF_ONLY に強制されるので、誰にも届かないまま成功ログが積み上がる。
-   `--allow-self-only` を明示したときだけ通す（審査前の経路確認用）。
+2. **公開範囲ガード** — `creator_info/query` の `privacy_level_options` に
+   `PUBLIC_TO_EVERYONE` が無ければ投稿しない。`--allow-self-only` を明示した
+   ときだけ SELF_ONLY で通す（審査前の経路確認用）。
+
+   **2026-08-31 追記（実測により当初の想定を訂正）**: この関門は**審査状態を
+   判定していない**。Sandbox の `creator_info` は PUBLIC_TO_EVERYONE を返したが、
+   その値で投稿すると HTTP 403 `unaudited_client_can_only_post_to_private_accounts`
+   で拒否された。「未審査の投稿は SELF_ONLY に強制される（APIは成功を返す）」
+   という当初の前提は誤りで、**実際は拒否される**。誰にも届かない動画が
+   成功ログ付きで積み上がる事故は起きない。
 3. **アカウント取り違えガード** — `meta.json` の `expected_tiktok_open_id` と
    認証中の open_id が一致しなければ投稿しない（YouTube の `expected_channel_id` と同型）。
 
