@@ -30,17 +30,37 @@ from scripts import tiktok                                  # noqa: E402
 from scripts.build_short import mp4_duration_seconds        # noqa: E402
 
 
-def post(api, workdir: Path, *, allow_self_only: bool = False) -> dict:
+def post(api, workdir: Path, *, allow_self_only: bool = False,
+         state_dir: Path | None = None) -> dict:
     """1本を TikTok に投稿する。関門を全部ここで通す。
 
-    判定の順序は「安いものから」。尺はローカルで測れるので最初に見る
-    ——60秒に届かない動画のために通信も数MBのアップロードもしない。
+    判定の順序は「安いものから」。重複と尺はローカルで判るので最初に見る
+    ——既に出した動画や60秒に届かない動画のために、通信も数MBの
+    アップロードもしない。
 
     投稿の完了は `await_complete` で確認してから返す。Direct Post は非同期で、
     init が 200 を返しても後段で失敗しうる。init の成功だけを記録すると、
     失敗した投稿が「済み」になって二度と出せなくなる。
+
+    **重複投稿の関門はここに置く。** 以前はキューのフィルタ
+    （tiktok_queue.due_entries）にだけあり、このCLIを直接叩く経路が
+    素通りしていた。CLAUDE.md が名指ししている「run_daily にだけ検証を置いて
+    手動CLIが素通りした」のとまったく同じ穴だった。
     """
+    from scripts import tiktok_queue
+
     workdir = Path(workdir)
+    state_dir = Path(state_dir) if state_dir is not None else ROOT / "state"
+
+    posted = tiktok_queue.load_posted(state_dir)
+    already = posted.get(Path(workdir).as_posix())
+    if already:
+        raise tiktok.AlreadyPosted(
+            f"{workdir} は投稿済みです"
+            f"（publish_id={already.get('publish_id')}）。"
+            "同じ動画を2本 TikTok に並べないため投稿しません。"
+            "作り直したいなら新しい題材でバリアントを作ってください")
+
     video = workdir / "video.mp4"
     meta_path = workdir / "meta.json"
     if not video.exists():
