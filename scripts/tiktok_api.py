@@ -129,7 +129,7 @@ def authorize(root: Path, port: int = DEFAULT_REDIRECT_PORT) -> dict:
     client_path = root / "tiktok_client.json"
     if not client_path.exists():
         raise _missing_client(client_path)
-    client = json.loads(client_path.read_text(encoding="utf-8"))
+    client = json.loads(client_path.read_text(encoding="utf-8-sig"))
 
     redirect_uri = (DEFAULT_REDIRECT_URI if port == DEFAULT_REDIRECT_PORT
                     else f"http://localhost:{port}/callback")
@@ -282,13 +282,13 @@ class TikTokApi:
         token_path = root / "tiktok_token.json"
         if not client_path.exists():
             raise _missing_client(client_path)
-        client = json.loads(client_path.read_text(encoding="utf-8"))
+        client = json.loads(client_path.read_text(encoding="utf-8-sig"))
         if not token_path.exists():
             raise TikTokAuthError(
                 f"{token_path.name} がありません。\n"
                 "  python scripts/upload_tiktok.py --auth-only を実行して、\n"
                 "  ブラウザで認証してください")
-        token = json.loads(token_path.read_text(encoding="utf-8"))
+        token = json.loads(token_path.read_text(encoding="utf-8-sig"))
         api = cls(root, client, token)
         api._ensure_token()
         return api
