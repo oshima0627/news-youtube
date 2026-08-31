@@ -2,7 +2,8 @@
 
 最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
 実 API での認証に成功 → **TikTok への初投稿に成功（SELF_ONLY）。投稿経路は全部検証済み**。
-残るはデモ動画の撮影と審査申請。**デモ用の動画は作成済み。本人の録画待ち**）
+残るはデモ動画の撮影と審査申請。**2本目の投稿にも成功。デモ録画は1本目が完成、
+TikTok 側の画面を映した2本目を本人が撮るところ**）
 
 ## いま何をしているのか
 
@@ -167,7 +168,27 @@ CLAUDE.md の「関門は1つにして、全経路がそれを通る形にする
 python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --script <短尺台本.json> --tiktok-script <TikTok台本.json>   --dry-run --days-ahead 3 --limit 1
 ```
 
-### 13. 審査に要る3ページを Cloudflare Workers で公開した
+### 13. デモ用の回を投稿し、ターミナル側の録画が完成した
+
+本人がアカウントを非公開にして録画しながら実行。2本目の投稿も成功した:
+
+```
+work/13ed80ac2dc1/tiktok
+  publish_id=v_pub_file~v2-1.7680058761830205460
+  status: PUBLISH_COMPLETE  (SELF_ONLY, 74.19秒)
+```
+
+録画: `C:/Users/oshim/Videos/Captures/Windows PowerShell 2026-08-31 14-13-19.mp4`
+（mp4 / h264 / 1920x1032 / 74.5秒 / 40.1MB。**条件内**）。
+フレームを抜き出して中身を確認済み。`--auth-only` の出力（Login Kit /
+user.info.basic、`使っている鍵: Sandbox`）と投稿の出力（Content Posting API /
+video.publish）が映っている。
+
+**ただしターミナルだけで、TikTok 側の画面が映っていない。** 審査は連携の
+端から端までを求めるので、プロフィールに投稿が並ぶところと再生を映した
+2本目が要る（デモ動画は5本までアップロードできる）。
+
+### 14. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -260,6 +281,18 @@ python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --
   ```
 - **アカウント設定を元に戻したことを画面で確認した**: 非公開アカウント=オフ、
   コメント=誰でも（非公開にすると自動で「フォロワー」に変わるが、戻すと復帰する）。
+- **投稿がプロフィールに実在することを確認した**（本人のスクリーンショット）。
+  `https://www.tiktok.com/@naotaka_oshima` に1本目が鍵アイコン付きで並んでいる。
+  API の `PUBLISH_COMPLETE` だけでなく、TikTok 上に動画があることの確認。
+- **`privacy_level_options` はアカウントの公開設定を反映する**（2026-08-31 実測）:
+
+  | アカウント | 返ってきた選択肢 |
+  |---|---|
+  | 公開 | `PUBLIC_TO_EVERYONE` / `MUTUAL_FOLLOW_FRIENDS` / `SELF_ONLY` |
+  | 非公開 | `FOLLOWER_OF_CREATOR` / `MUTUAL_FOLLOW_FRIENDS` / `SELF_ONLY` |
+
+  **どちらも審査状態とは無関係。** 公開アカウントで `PUBLIC_TO_EVERYONE` が
+  返っても投稿は 403 で拒否された。
 - **デモ用の動画をビルドした**（`work/13ed80ac2dc1/`）:
 
   ```
@@ -293,9 +326,10 @@ python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --
 
 | 項目 | 状況 |
 |---|---|
-| デモ用の新しい動画 | **Claude の作業。** 台本を書いてビルドする（既存の1本は投稿済みで再投稿できない） |
-| デモ動画の撮影 | **本人の作業。** **Claude には画面録画ができない** |
-| Production の審査申請 | デモ動画が揃えば出せる。**申請ボタンは本人の確認を取ってから** |
+| デモ録画 1本目（ターミナル） | **完成**。40.1MB / 74.5秒 |
+| デモ録画 2本目（TikTok の画面） | **本人の作業。** プロフィールに投稿が並ぶところと再生を映す |
+| アカウントを公開に戻す | **本人の作業。** 撮影後に忘れず戻す |
+| Production の審査申請 | 2本揃えば出せる。**申請ボタンは本人の確認を取ってから** |
 
 **コード側の未検証はもう無い。** 残っているのは TikTok の手続きだけ。
 
@@ -313,9 +347,9 @@ python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --
 
 - **Production の審査は未申請（Draft）。**
   Sandbox で `PUBLIC_TO_EVERYONE` が返るのは審査とは無関係だと実測で確定した。
-- **投稿した動画が TikTok アプリでどう見えるかは未確認。** API は
-  PUBLISH_COMPLETE を返したが、アプリ側の表示は目視していない。
 - **アカウントを公開に戻したあと、SELF_ONLY の投稿がどう扱われるかは未確認。**
+- **2026-08-31 14:13 時点でアカウントが非公開のままの可能性がある。**
+  録画後に公開へ戻したかを確認すること。
 - **`run_daily.py --tiktok-script` からキューに積んで
   `post_tiktok_due.py` で投げる経路は、実 API では未実行。**
   今回は `upload_tiktok.py` を直接叩いた。
@@ -333,7 +367,15 @@ python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --
 1. ~~デモ用の新しい題材で TikTok バリアントを作る~~ **完了**
    （`work/13ed80ac2dc1/tiktok`、74.19秒）。
 
-2. **デモ動画を録る**（**Claude には画面録画ができない。本人の作業**）。
+2. **デモ録画の2本目を撮る**（**Claude には画面録画ができない。本人の作業**）。
+   30秒ほどでよい。`https://www.tiktok.com/@naotaka_oshima` を開き、
+   新しい動画が並んでいるところ → クリックして再生 → 内容と出典が見えるところ。
+   撮り終えたら**非公開アカウントをオフに戻す**。
+
+   1本目（ターミナル側）は撮影済み:
+   `C:/Users/oshim/Videos/Captures/Windows PowerShell 2026-08-31 14-13-19.mp4`
+
+3. ~~デモ動画を録る~~（1本目の手順。参考として残す）。
    手順は 2026-08-31 に実際に通したものと同じ。録画には
    **選んだ products と scopes が全部映っている**必要がある:
 
