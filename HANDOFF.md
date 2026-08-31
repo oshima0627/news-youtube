@@ -1,6 +1,6 @@
 # HANDOFF
 
-最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → 開発者アプリの登録を途中まで進めた）
+最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → 開発者アプリの登録。残りはデモ動画1件）
 
 ## いま何をしているのか
 
@@ -8,9 +8,9 @@
 本文だけを長く書いた **70〜80秒版**を `work/<id>/tiktok/` に作り、YouTube の枠と
 同じ時刻に Direct Post API で投稿する。
 
-**コードは完成していて全経路を通した。いま止まっているのは TikTok 側のアプリ登録。**
-開発者アプリは作成済みだが、**必須項目が5つ埋まらず、下書き保存すらできない状態**
-（下記「いま詰まっているところ」）。
+**コードは完成していて全経路を通した。TikTok のアプリ登録も残り1項目まで来た。**
+未入力は**デモ動画だけ**。ただしポータルは全項目が埋まるまで下書き保存できないので、
+**入力内容はまだブラウザのタブ上にしかない**（下記「いま詰まっているところ」）。
 
 YouTube の運用は変わっていない: **枠は 2026-09-01 18:30 JST まで埋まっている
 （予約11本）。次の空きは 9/2 07:30。** `ANTHROPIC_API_KEY` は無いので、台本は
@@ -47,10 +47,17 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
   --dry-run --days-ahead 3 --limit 1
 ```
 
-### 3. TikTok 開発者アプリを作り、設定を途中まで入れた
+### 3. TikTok 開発者アプリを作り、デモ動画以外を全部入れた
 
 本人が開発者アカウントを作成してログインしたあと、ブラウザ操作で進めた。
 **入力した値は全部 [`docs/tiktok-app-registration.md`](docs/tiktok-app-registration.md) に控えてある。**
+
+### 4. 審査に要る3ページを Cloudflare Workers で公開した
+
+`site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
+利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
+**ページの記述は実装と一致させてある**（保存するトークンの種類と置き場所、
+要求するスコープ2つ、一次資料の扱い）。実装を変えたら `site/src/index.js` も直す。
 
 ## 検証済みの事実（実際に画面に出した出力）
 
@@ -84,13 +91,20 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 - **入力できた項目**: App name / Category=News / Description(112字) /
   Platforms=Desktop / Products=Login Kit + Content Posting API /
   **Direct Post=ON** / Scopes=`user.info.basic`,`video.publish`,`video.upload` /
-  Redirect URI(Desktop)=`http://localhost:8723/callback` / App review の説明文(922字)。
+  Redirect URI(Desktop)=`http://localhost:8723/callback` / App review の説明文(922字) /
+  App icon / 3つのURL。**エラーは 6 → 1（デモ動画のみ）まで減った。**
 - **Save が拒否されることを確認した**:
 
   ```
   Please correct all errors before you save changes, or submit changes for review.
-  This form has 5 errors.
   ```
+
+- **URL の所有確認が通った**: `Your property has been verified` /
+  URL prefix `https://kokkai-news-maruwakari.oshima6-27.workers.dev/` / Verified。
+- **3ページが公開されていることを確認した**（`/` `/terms` `/privacy` が 200、
+  未定義パスは 404、署名ファイルが 68バイトで一致、連絡先 `info@nexeed-lab.com` を掲載）。
+- **誤った名前の Worker を消した**: `Successfully deleted kokkai-news-marukawari`、
+  旧URLは HTTP 404。TikTok 側の旧 URL prefix も `Delete success` で削除済み。
 
 - **`wrangler --version` = 4.127.1、`wrangler whoami` は認証済み**（アカウントの
   権限一覧が返った）。
@@ -109,15 +123,16 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 いま入力した内容は**開いているブラウザのタブ上にしかない**（タブは開いたまま
 にしてある）。閉じたら `docs/tiktok-app-registration.md` を見て再入力する。
 
-残り5項目:
+残り1項目:
 
 | 項目 | 状況 |
 |---|---|
-| App icon (1024x1024) | **3案を作って本人の選択待ち**（scratchpad の `icon_a/b/c.png`。scratchpad は消えるので、選ばれた案は作り直す。生成コードは下記） |
-| Terms of Service URL | **未着手。** Cloudflare Workers で公開すると決まった |
-| Privacy Policy URL | 同上 |
-| Web/Desktop URL | 同上（サービス説明ページ） |
 | デモ動画 | **未着手。** Sandbox 環境での端から端までの画面録画が必要 |
+
+**これが埋まるまで Save も Submit もできない。** つまり、いまタブを閉じると
+App icon・3つのURL・説明文などの入力が消える（URL の所有確認だけは
+ポータル側に保存されているので残る）。再入力は
+`docs/tiktok-app-registration.md` を見れば機械的にできる。
 
 ## 未検証のもの
 
@@ -133,23 +148,14 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 
 ## 次にやること
 
-1. **アイコンを決める**（本人の返事待ち。A=見出しと同じ縦棒＋「ニュース」／
-   B=鉤括弧に「国会」／C=テロップ帯の三層）。生成し直すコードは
-   `docs/tiktok-app-registration.md` には無いので、必要なら作り直す。
-   紺 `(16,24,43)` ／ オレンジ `(255,150,26)`、`scripts.draw.pick_font` を使う。
-
-2. **Cloudflare Workers で3ページを公開する。** 利用規約・プライバシーポリシー・
-   サービス説明。`wrangler` は認証済みなので、コードを書いて `wrangler deploy`。
-   URL が出たらフォームの3項目に入れる。
-
-3. **デモ動画を録る。** Developer Portal の **Sandbox** タブを使い、
+1. **デモ動画を録る。** Developer Portal の **Sandbox** タブを使い、
    `upload_tiktok.py --auth-only` → 動画の投稿 → TikTok 上での結果、までを
    画面録画する（mp4/mov、50MB以下）。**未承認アプリは Sandbox での実演が必須。**
 
-4. **5項目が埋まったら Save → Submit for review。**
+2. **録れたらアップロードして Save → Submit for review。**
    **申請ボタンは本人の確認を取ってから押すこと。**
 
-5. **審査が下りたら認証して1本投稿する**:
+3. **審査が下りたら認証して1本投稿する**:
 
    ```bash
    python scripts/upload_tiktok.py --auth-only     # 審査状態も表示される
@@ -159,17 +165,17 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
    python scripts/post_tiktok_due.py --dry-run     # キューを確認
    ```
 
-6. **定時タスクを登録する**（枠の時刻に実際に投げる）:
+4. **定時タスクを登録する**（枠の時刻に実際に投げる）:
 
    ```
    schtasks /create /tn "tiktok-0725" /sc daily /st 07:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
    schtasks /create /tn "tiktok-1825" /sc daily /st 18:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
    ```
 
-7. **9/2 以降の YouTube の枠を埋める**（空きは 9/2 07:30 から）。実測済みで未使用の
+5. **9/2 以降の YouTube の枠を埋める**（空きは 9/2 07:30 から）。実測済みで未使用の
    検索語: `医師偏在指標 新潟`、`外国人 土地`。
 
-8. **8/31 以降に `myjKRuLTmXw`（教員不足）の再生数を他の回と比べる**
+6. **8/31 以降に `myjKRuLTmXw`（教員不足）の再生数を他の回と比べる**
    （自殺者数に触れているため配信制限の可能性。他の回は約1,200）。
 
 ## 触ってはいけないところ
@@ -184,6 +190,9 @@ python scripts/run_daily.py --keyword "医師偏在指標 新潟" \
 - **`tiktok_api.DEFAULT_REDIRECT_URI` を変えたら、TikTok アプリ側の登録も同時に
   直す。** 文字列が完全一致でないと同意画面で止まる。
 - **開発者ポータルで Submit for review を押す前に本人の確認を取る。**
+- **署名ファイルの中身を画面から書き写さない。** ダウンロードした実物をコピーする
+  （`l` と `I` が画面で見分けられない）。URL prefix を変えると別のコードが発行される。
+- **`site/src/index.js` の記述と実装を食い違わせない。** 審査はここを突き合わせる。
 - 長尺（16:9）は当面作らない。乗る面が無く、関連動画からの回遊も15日で1再生。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
 - ログを PowerShell で読むときは `Get-Content -Encoding UTF8`。
