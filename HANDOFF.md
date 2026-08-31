@@ -2,7 +2,7 @@
 
 最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
 実 API での認証に成功 → **TikTok への初投稿に成功（SELF_ONLY）。投稿経路は全部検証済み**。
-**申請フォームが完成し保存済み。残るは Submit for review を押す判断だけ**）
+**2026-08-31 に審査へ提出済み（in review）。TikTok の審査結果待ち**）
 
 ## いま何をしているのか
 
@@ -15,9 +15,11 @@ Production 側の未入力は**デモ動画だけ**。ただしポータルは�
 保存できないので、**Production の入力はまだブラウザのタブ上にしかない**
 （下記「いま詰まっているところ」）。
 
-**投稿経路はすべて実 API で検証済み。申請フォームも完成して保存済み。**
-残るのは **Submit for review を押すかどうかの判断だけ**。承認が下りるまで
-公開投稿はできない（審査前はアカウントを非公開にしたうえで SELF_ONLY のみ）。
+**投稿経路はすべて実 API で検証済み。審査にも提出した（in review）。**
+**こちらから進められることは無く、TikTok の審査結果を待つ段階。**
+承認が下りるまで公開投稿はできない（審査前はアカウントを非公開にしたうえで
+SELF_ONLY のみ）。承認されたら `tiktok_client.json` を Production の鍵に
+差し替えて運用を始める。
 
 YouTube の運用は変わっていない: **枠は 2026-09-01 18:30 JST まで埋まっている
 （予約11本）。次の空きは 9/2 07:30。** `ANTHROPIC_API_KEY` は無いので、台本は
@@ -203,7 +205,20 @@ demo2_tiktok.mp4:   28.1 MB → 0.6 MB   （TikTok の画面、27.7秒）
 **Save が通った＝全必須項目が埋まっている**（このポータルは1つでも欠けると
 保存を拒否する）。再読み込み後も保持を確認。
 
-### 15. 審査に要る3ページを Cloudflare Workers で公開した
+### 15. 審査に提出した（2026-08-31）
+
+本人の明示的な承諾を得て `Submit for review` を押した。申請理由:
+`First submission: requesting video.publish for a personal desktop tool that
+posts the creator's own news videos.`（112/120）
+
+```
+This version of 日本の最新ニュースまるわかり is in review.
+There may be a delay in the app review process due to a high volume of requests.
+```
+
+ボタンは `Recall`（取り下げ）に変わっている。
+
+### 16. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -313,6 +328,7 @@ demo2_tiktok.mp4:   28.1 MB → 0.6 MB   （TikTok の画面、27.7秒）
   1本目に TikTok の画面が入っていなかったのはこれが理由。
 - **申請フォームが保存できた**。エラー0件。再読み込み後も
   アイコン・3つのURL・説明文(978/1000)・Desktop・Direct Post・デモ動画2本が保持。
+- **審査に提出した**。画面に `is in review` が表示され、ボタンが `Recall` に変わった。
 - **デモ用の動画をビルドした**（`work/13ed80ac2dc1/`）:
 
   ```
@@ -344,11 +360,13 @@ demo2_tiktok.mp4:   28.1 MB → 0.6 MB   （TikTok の画面、27.7秒）
 いま入力した内容は**開いているブラウザのタブ上にしかない**（タブは開いたまま
 にしてある）。閉じたら `docs/tiktok-app-registration.md` を見て再入力する。
 
+**詰まっているところは無い。TikTok の審査結果待ち。**
+
 | 項目 | 状況 |
 |---|---|
-| Production の審査申請 | **本人の判断待ち。** フォームは完成・保存済み。あとは Submit for review を押すだけ |
+| Production の審査 | **提出済み（in review）。** 数日〜数週間かかるのが普通 |
 
-**Claude はこのボタンを本人の明示的な承諾なしに押さない。**
+待っている間、YouTube 側は無傷で動く（`--tiktok-script` を付けなければ従来どおり）。
 
 **コード側の未検証はもう無い。** 残っているのは TikTok の手続きだけ。
 
@@ -383,7 +401,9 @@ demo2_tiktok.mp4:   28.1 MB → 0.6 MB   （TikTok の画面、27.7秒）
 
 ## 次にやること
 
-1. **Submit for review を押すか決める**（本人の判断）。フォームは完成・保存済み。
+1. **審査結果を待つ。** 進捗は
+   https://developers.tiktok.com/app/7679774568128202772/pending で見る。
+   却下されたら `Review comments` に理由が出るので、それに合わせて直して再提出。
 
 2. ~~デモ録画を撮る~~ **完了**（参考として手順を残す）。（**Claude には画面録画ができない。本人の作業**）。
    30秒ほどでよい。`https://www.tiktok.com/@naotaka_oshima` を開き、
