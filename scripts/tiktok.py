@@ -97,10 +97,17 @@ def resolve_privacy_level(creator_info: dict,
                           allow_self_only: bool = False) -> str:
     """投稿に使う公開範囲を決める。公開が選べなければ止める。
 
-    未審査のクライアントが投稿したものは **すべて SELF_ONLY に強制される**。
-    投稿API自体は成功を返すので、止めないと「誰にも届かない動画」を
-    成功ログ付きで作り続けることになる。審査が下りたかどうかは
-    `privacy_level_options` に PUBLIC_TO_EVERYONE が現れるかで判る。
+    **`privacy_level_options` は審査状態の指標にならない。** 2026-08-31 に実測:
+    Sandbox の `creator_info` は PUBLIC_TO_EVERYONE を含む3つを返したが、
+    その値で投稿すると `video/init/` が HTTP 403 で拒否した
+    （`unaudited_client_can_only_post_to_private_accounts`）。
+    ドキュメントは「未審査の投稿は SELF_ONLY に強制される」と読めるが、
+    **実際は強制ではなく拒否**だった。
+
+    したがってこの関数は「審査が下りたか」を判定していない。判定しているのは
+    「このクライアントで公開範囲として何が選べるか」だけ。**審査状態を確かめる
+    唯一の方法は、実際に投稿してみること。** それでも残しているのは、選べない
+    値を送って後段で落ちるより手前で止まるほうが安いから。
     """
     options = creator_info.get("privacy_level_options") or []
     if "PUBLIC_TO_EVERYONE" in options:
