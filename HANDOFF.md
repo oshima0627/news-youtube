@@ -1,7 +1,8 @@
 # HANDOFF
 
 最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
-**実 API での認証に成功**。本人の判断待ち: テスト投稿を公開でやるか自分だけ表示でやるか）
+実 API での認証に成功 → **公開投稿を試して403で拒否され、設計上の前提が1つ否定された**。
+本人の判断待ち: `--allow-self-only` で投稿経路の残りを検証するか）
 
 ## いま何をしているのか
 
@@ -14,8 +15,8 @@ Production 側の未入力は**デモ動画だけ**。ただしポータルは�
 保存できないので、**Production の入力はまだブラウザのタブ上にしかない**
 （下記「いま詰まっているところ」）。
 
-**Sandbox の認証は完了した。実 API に到達済み。** 次の一手は「テスト投稿を
-どの公開範囲でやるか」の判断（下記「次にやること」1）。
+**Sandbox の認証は完了。実 API に到達済み。公開投稿は審査前には不可能だと実測で確定した。**
+次の一手は `--allow-self-only` での投稿検証（下記「次にやること」1）。
 
 YouTube の運用は変わっていない: **枠は 2026-09-01 18:30 JST まで埋まっている
 （予約11本）。次の空きは 9/2 07:30。** `ANTHROPIC_API_KEY` は無いので、台本は
@@ -84,7 +85,27 @@ Production はまだ Draft で申請すらしていない。このまま進む�
 警告する。**接頭辞は1件しか実測していないので警告にだけ使い、投稿の可否には
 使わない**（`tiktok.py` の関門だけが投稿を止める）。
 
-### 8. 審査に要る3ページを Cloudflare Workers で公開した
+### 8. 公開投稿を試し、設計上の前提が1つ否定された（**この工程で最も重要**）
+
+`upload_tiktok.py work/1d04e9d8cd04/tiktok`（`--allow-self-only` なし）を実行。
+`video/init/` が **HTTP 403** で拒否した:
+
+```
+{"error":{"code":"unaudited_client_can_only_post_to_private_accounts", ...}}
+```
+
+| | 当初の想定（仕様書に書いていた） | 実測 |
+|---|---|---|
+| 未審査での公開投稿 | API は成功を返し、中身が SELF_ONLY に強制される | **403 で拒否される** |
+| `privacy_level_options` | 審査が下りたかが判る | **判らない**（未審査でも3つ返った） |
+
+つまり「未審査ガード」は**審査状態を判定していなかった**。ただし当初恐れていた
+事故（誰にも届かない動画が成功ログ付きで積み上がる）は TikTok 側が拒否するので
+**そもそも起きない**。`scripts/tiktok.py` の docstring・`CLAUDE.md`・仕様書の
+該当箇所を実測に合わせて訂正した。関門自体は残す（選べない値を送って後段で
+落ちるより手前で止まるほうが安い）。
+
+### 9. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -159,6 +180,11 @@ Production はまだ Draft で申請すらしていない。このまま進む�
   `stitch_disabled=false` / `comment_disabled=false` / `duet_disabled=false`。
 - **実データで3つの関門を通した**: 実尺74.17秒 → 尺の下限(61秒)✓ /
   アカウント上限(600秒)✓ / 公開範囲の解決 → `PUBLIC_TO_EVERYONE`✓。
+- **公開投稿は 403 で拒否されることを実測した**（上記「今回やったこと 8」）。
+  **審査前に公開投稿する方法は無い。**
+- **`meta.json` を正規の経路で作り直した**（手で編集していない）。
+  `run_daily.write_tiktok_meta` を呼び、`expected_tiktok_open_id` に
+  トークンから読んだ open_id が入ることを確認した。
 
 - **`wrangler --version` = 4.127.1、`wrangler whoami` は認証済み**（アカウントの
   権限一覧が返った）。
@@ -179,8 +205,11 @@ Production はまだ Draft で申請すらしていない。このまま進む�
 
 | 項目 | 状況 |
 |---|---|
-| テスト投稿の公開範囲 | **本人の判断待ち。** 公開で出すか、`--allow-self-only` で自分だけ表示にするか |
+| 投稿経路の残り | **本人の判断待ち。** `--allow-self-only` で PUT とポーリングを検証するか |
 | デモ動画（Production） | **未着手。** Sandbox での端から端までの画面録画が必要 |
+
+**公開投稿は審査が下りるまで不可能**（403で拒否される）。順序は
+「self-only で経路検証 → その様子を録画 → 申請 → 承認 → 公開投稿」。
 
 **Production はデモ動画が埋まるまで Save も Submit もできない。** つまり
 いまタブ（`.../pending`）を閉じると App icon・3つのURL・説明文の入力が消える
@@ -191,11 +220,12 @@ Production はまだ Draft で申請すらしていない。このまま進む�
 
 ## 未検証のもの
 
-- **TikTok に1本も投稿していない。** `authorize()` と `creator_info()` は
-  実サーバで確認できたが、**`publish()` と `_fetch_status()` は未実行**。
-  動画の送信（PUT）と完了確認のポーリングはまだ本物に当たっていない。
-- **Production の審査状況は不明。** 申請すらしていない（Draft）。Sandbox で
-  `PUBLIC_TO_EVERYONE` が返るのは審査とは無関係。
+- **TikTok に1本も投稿できていない。** `authorize()` / `creator_info()` /
+  `video/init/`（403で拒否されるところまで）は実サーバで確認できたが、
+  **動画の送信（PUT）と `_fetch_status()` のポーリングは未実行**。
+  `--allow-self-only` を通せばここが検証できる。
+- **Production の審査は未申請（Draft）。** 公開投稿はこれが通るまで不可能。
+  Sandbox で `PUBLIC_TO_EVERYONE` が返るのは審査とは無関係だと実測で確定した。
 - **Content Posting API が個人アカウントで使えるかは未確認。** Business
   アカウント必須だと Creator Rewards（個人アカウント必須）と両立しない。
   ただし `@naotaka_oshima` で `creator_info` が通ったので、少なくとも
@@ -207,16 +237,16 @@ Production はまだ Draft で申請すらしていない。このまま進む�
 
 ## 次にやること
 
-1. **テスト投稿の公開範囲を決めて実行する。**
-   `--allow-self-only` を付けないと `PUBLIC_TO_EVERYONE` に解決され、
-   **@naotaka_oshima に実際に公開投稿される**（Sandbox の鍵でも投稿先は本物）。
-   実行前に `work/1d04e9d8cd04/tiktok/meta.json` の
-   `expected_tiktok_open_id` に今日の open_id を入れて作り直すこと
-   （空のままだとアカウント取り違えガードが止める＝設計どおり）。
+1. **`--allow-self-only` で1本投稿し、経路の残りを検証する**（本人の判断待ち）。
+   これが通れば未検証は無くなり、**そのままデモ動画の実演内容になる**。
+   `meta.json` は作り直し済みなのでそのまま実行できる。
 
    ```bash
-   python scripts/upload_tiktok.py work/<id>/tiktok --allow-self-only
+   python scripts/upload_tiktok.py work/1d04e9d8cd04/tiktok --allow-self-only
    ```
+
+   **公開（`--allow-self-only` なし）は審査が下りるまで 403 になる。**
+   試す必要はない（2026-08-31 に実測済み）。
 
 2. ~~本人が Sandbox の認証情報を置く~~ **完了**:
    `C:\Users\oshim\Documents\projects\news-youtube\tiktok_client.json` に
@@ -279,10 +309,10 @@ Production はまだ Draft で申請すらしていない。このまま進む�
 - **Sandbox と Production の client_key / client_secret を混ぜない。** 別物で、
   取り違えると投稿が通らない。`tiktok_client.json` をどちらの鍵にしているか意識する。
 - **client_secret を会話やコミットに残さない。** 本人が手で置く。
-- **Sandbox の `PUBLIC_TO_EVERYONE` を「審査が下りた」と読まない。** Sandbox は
-  審査に関係なくそれを返す。Production の審査状況は Production の鍵でしか分からない。
-- **Sandbox の鍵でも投稿先は本物のアカウント。** `--allow-self-only` を付けない
-  投稿は実際に公開される。
+- **`privacy_level_options` を審査状態の指標に使わない。** 未審査でも
+  `PUBLIC_TO_EVERYONE` を返す。審査状態は実際に投稿してみるまで分からない
+  （2026-08-31 実測）。
+- **審査前に公開投稿する方法は無い。** 403 で拒否される。回避策を探さない。
 - 長尺（16:9）は当面作らない。乗る面が無く、関連動画からの回遊も15日で1再生。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
 - ログを PowerShell で読むときは `Get-Content -Encoding UTF8`。
