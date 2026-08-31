@@ -1,10 +1,18 @@
 {
-  "work\\1d04e9d8cd04\\tiktok": {
+  "work/1d04e9d8cd04/tiktok": {
     "publish_id": "v_pub_file~v2-1.7680043967891195924",
     "privacy_level": "SELF_ONLY",
     "duration": 74.166667,
     "title": "新潟県は医師偏在指標で全国第四十四位 参院決算委で問われた医師不足",
     "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00920260706/35",
+    "status": "PUBLISH_COMPLETE"
+  },
+  "work/13ed80ac2dc1/tiktok": {
+    "publish_id": "v_pub_file~v2-1.7680058761830205460",
+    "privacy_level": "SELF_ONLY",
+    "duration": 74.186667,
+    "title": "介護職員の賃金は全産業平均より八万円低い 参院厚労委で示された格差",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122114260X01320260616/5",
     "status": "PUBLISH_COMPLETE"
   }
 }
