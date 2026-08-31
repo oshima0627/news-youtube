@@ -84,7 +84,12 @@ python scripts/post_tiktok_due.py --dry-run   # TikTok の投稿待ちを見る
   （`state/tiktok_queue.json`）に積むだけで、投稿は `post_tiktok_due.py` が
   07:25 / 18:25 の定時タスクで行う。**理由**: Direct Post API に予約投稿が無い。
   分けてあるので TikTok が落ちても YouTube の予約は無傷。
+- **重複投稿の関門は `upload_tiktok.post()` の中にある。** キューのフィルタ側にだけ
+  置いていた時期があり、`upload_tiktok.py` を直接叩く経路が素通りしていた
+  （known-issues 2・3・8番と同型の穴）。**呼び出し側に検証を戻さない。**
 - **`state/tiktok_*.json` も手で編集しない**（`published.json` と同じ理由）。
+  キーは `Path(...).as_posix()` で正規化する。Windows のバックスラッシュ表記と
+  混ざると同じ場所を別物として扱い、重複防止が効かない。
 - PKCE の `code_challenge` は **hex エンコードの SHA256**。一般的な
   base64url の実装をそのまま使うと認可サーバに拒否される。
 - **開発者アプリは「Desktop」で登録する。** Web で登録すると redirect URI に

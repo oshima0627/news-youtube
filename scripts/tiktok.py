@@ -39,6 +39,7 @@ CAPTION_MAX_RUNES = 2200
 EXIT_TOO_SHORT = 5
 EXIT_NOT_AUDITED = 6
 EXIT_ACCOUNT_MISMATCH = 7
+EXIT_ALREADY_POSTED = 8
 
 
 class TikTokError(RuntimeError):
@@ -59,6 +60,10 @@ class NotAudited(TikTokError):
 
 class AccountMismatch(TikTokError):
     exit_code = EXIT_ACCOUNT_MISMATCH
+
+
+class AlreadyPosted(TikTokError):
+    exit_code = EXIT_ALREADY_POSTED
 
 
 def utf16_len(text: str) -> int:

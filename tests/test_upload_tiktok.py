@@ -161,3 +161,54 @@ def test_metaが無ければ原因を出して止まる(workdir, long_enough):
     with pytest.raises(tiktok.TikTokError) as e:
         ut.post(api, workdir)
     assert "meta.json" in str(e.value)
+
+
+# ── 重複投稿の関門は post() の中に置く ─────────────────────────
+#
+# キューのフィルタ（tiktok_queue.due_entries）にだけ置いていたため、
+# upload_tiktok.py を直接叩く経路が素通りしていた。CLAUDE.md が名指しで
+# 警告している「同型の穴」（run_daily にだけ検証を置いて手動CLIが素通り）
+# とまったく同じ形。**全経路が通る post() の中に移す。**
+
+def test_投稿済みのworkdirは投稿しない(workdir, long_enough, tmp_path):
+    from scripts import tiktok_queue
+
+    api = FakeApi()
+    ut.post(api, workdir, state_dir=tmp_path)
+    tiktok_queue.mark_posted(tmp_path, str(workdir), {"publish_id": "p1"})
+
+    api2 = FakeApi()
+    with pytest.raises(tiktok.AlreadyPosted):
+        ut.post(api2, workdir, state_dir=tmp_path)
+
+
+def test_投稿済みなら外部へ何も送らない(workdir, long_enough, tmp_path):
+    from scripts import tiktok_queue
+
+    tiktok_queue.mark_posted(tmp_path, str(workdir), {"publish_id": "p1"})
+    api = FakeApi()
+    with pytest.raises(tiktok.AlreadyPosted):
+        ut.post(api, workdir, state_dir=tmp_path)
+    assert api.calls == []
+
+
+def test_区切り文字が違っても投稿済みと判定する(workdir, long_enough, tmp_path):
+    from scripts import tiktok_queue
+
+    tiktok_queue.mark_posted(tmp_path, str(workdir).replace(chr(92), "/"),
+                             {"publish_id": "p1"})
+    with pytest.raises(tiktok.AlreadyPosted):
+        ut.post(FakeApi(), workdir, state_dir=tmp_path)
+
+
+def test_投稿済みでなければ通常どおり投稿する(workdir, long_enough, tmp_path):
+    assert ut.post(FakeApi(), workdir, state_dir=tmp_path)["publish_id"] == "publish-1"
+
+
+def test_メッセージに投稿済みのpublish_idが出る(workdir, long_enough, tmp_path):
+    from scripts import tiktok_queue
+
+    tiktok_queue.mark_posted(tmp_path, str(workdir), {"publish_id": "p-old"})
+    with pytest.raises(tiktok.AlreadyPosted) as e:
+        ut.post(FakeApi(), workdir, state_dir=tmp_path)
+    assert "p-old" in str(e.value)
