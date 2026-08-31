@@ -72,7 +72,7 @@ ${body}
 const INDEX = page("Overview", `
 <h2>What this is</h2>
 <p>
-  <strong>国会ニュースまるわかり (Kokkai News Marukawari)</strong> is a personal
+  <strong>国会ニュースまるわかり (Kokkai News Maruwakari)</strong> is a personal
   desktop program. Its operator runs it on their own computer to build short
   vertical news videos and post them to <em>their own</em> TikTok and YouTube
   accounts. It is not a service offered to anyone else, and it has no user
@@ -229,6 +229,16 @@ const PRIVACY = page("Privacy Policy", `
 <p>You can reach the operator at <a href="mailto:info@nexeed-lab.com">info@nexeed-lab.com</a>.</p>
 `);
 
+// TikTok の URL prefix 所有確認。開発者ポータルが配る署名ファイルを、
+// **1文字も変えずに**この Worker から返す。
+//
+// ファイル名は開発者ポータルの画面でも読めるが、**画面から書き写さないこと。**
+// 実際に配られたファイル名は tiktoka8lrKl0... で、小文字のL（l）が入る。
+// 画面のフォントでは大文字のI（I）と見分けが付かず、書き写すと検証に落ちる。
+// 差し替えるときは配布されたファイルをダウンロードして中身をコピーする。
+const VERIFY_FILE = "tiktok7SEQbBehD6UOHsHdyHY52j0U5MF8EzRH.txt";
+const VERIFY_BODY = "tiktok-developers-site-verification=7SEQbBehD6UOHsHdyHY52j0U5MF8EzRH";
+
 const ROUTES = {
   "/": INDEX,
   "/terms": TERMS,
@@ -240,6 +250,13 @@ const ROUTES = {
 export default {
   fetch(request) {
     const { pathname } = new URL(request.url);
+
+    if (pathname === "/" + VERIFY_FILE) {
+      return new Response(VERIFY_BODY, {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+
     const html = ROUTES[pathname];
     if (!html) {
       return new Response("Not found", {
