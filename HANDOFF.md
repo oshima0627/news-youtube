@@ -2,7 +2,7 @@
 
 最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
 実 API での認証に成功 → **TikTok への初投稿に成功（SELF_ONLY）。投稿経路は全部検証済み**。
-残るはデモ動画の撮影と審査申請。**デモ用に新しい題材の動画を1本作る必要がある**）
+残るはデモ動画の撮影と審査申請。**デモ用の動画は作成済み。本人の録画待ち**）
 
 ## いま何をしているのか
 
@@ -156,7 +156,18 @@ CLAUDE.md の「関門は1つにして、全経路がそれを通る形にする
 `post()` の中へ移し、判定は尺より前に置いた（通信もアップロードもしないうちに
 止まる）。`tiktok.AlreadyPosted` / 終了コード8。
 
-### 12. 審査に要る3ページを Cloudflare Workers で公開した
+### 12. デモ用の動画を1本作った（`work/13ed80ac2dc1/`）
+
+`work/1d04e9d8cd04/tiktok` は投稿済みで関門が再投稿を止めるため、別題材で作成。
+題材は「介護職員の賃金は全産業平均より八万円低い」（参議院厚生労働委員会
+2026-06-16 永井幸子）。数字が3つ入り、家計に直結し、事実の指摘なので
+政治的に中立 — TikTok の審査担当も見ることを考えて選んだ。
+
+```bash
+python scripts/run_daily.py --keyword "介護職員 賃金 全産業平均"   --script <短尺台本.json> --tiktok-script <TikTok台本.json>   --dry-run --days-ahead 3 --limit 1
+```
+
+### 13. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -249,6 +260,16 @@ CLAUDE.md の「関門は1つにして、全経路がそれを通る形にする
   ```
 - **アカウント設定を元に戻したことを画面で確認した**: 非公開アカウント=オフ、
   コメント=誰でも（非公開にすると自動で「フォロワー」に変わるが、戻すと復帰する）。
+- **デモ用の動画をビルドした**（`work/13ed80ac2dc1/`）:
+
+  ```
+  試行1: speedScale=0.975 → 実尺58.63秒  テロップ20枚   （YouTube版）
+  試行1: speedScale=0.978 → 実尺74.19秒  テロップ25枚   （TikTok版）
+  ```
+
+  画面外に出たテロップは両版とも0行（最大右端 1054px / 画面幅 1080px）。
+  `expected_tiktok_open_id` も入っている。画像は発言者の写真が無く
+  **汎用の国会議事堂**（設計どおりのフォールバック）。stage.png を目視確認済み。
 - **`meta.json` を正規の経路で作り直した**（手で編集していない）。
   `run_daily.write_tiktok_meta` を呼び、`expected_tiktok_open_id` に
   トークンから読んだ open_id が入ることを確認した。
@@ -309,16 +330,15 @@ CLAUDE.md の「関門は1つにして、全経路がそれを通る形にする
 
 ## 次にやること
 
-1. **デモ用の新しい題材で TikTok バリアントを1本作る**（Claude の作業）。
-   `work/1d04e9d8cd04/tiktok` は投稿済みで、関門が再投稿を止める。
-   実測済み・未使用の検索語: `外国人 土地`。
+1. ~~デモ用の新しい題材で TikTok バリアントを作る~~ **完了**
+   （`work/13ed80ac2dc1/tiktok`、74.19秒）。
 
 2. **デモ動画を録る**（**Claude には画面録画ができない。本人の作業**）。
    手順は 2026-08-31 に実際に通したものと同じ。録画には
    **選んだ products と scopes が全部映っている**必要がある:
 
    - `upload_tiktok.py --auth-only` の実行（Login Kit / user.info.basic）
-   - `upload_tiktok.py work/<id>/tiktok --allow-self-only` の実行
+   - `upload_tiktok.py work/13ed80ac2dc1/tiktok --allow-self-only` の実行
      （Content Posting API / video.publish）
    - TikTok のプロフィールに投稿が並んでいるところ
    - その動画を再生して内容と出典が見えるところ
