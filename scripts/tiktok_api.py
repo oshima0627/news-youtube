@@ -212,6 +212,23 @@ def _missing_client(client_path: Path) -> "TikTokAuthError":
                 "     （.gitignore 済み。コミットしないこと）")
 
 
+# Sandbox の client_key の接頭辞（実測 2026-08-31: "sbawj6skoedxw4zauh"）。
+SANDBOX_KEY_PREFIX = "sbaw"
+
+
+def is_sandbox_key(client_key) -> bool:
+    """その client_key が Sandbox のものか。**警告のためだけに使う。**
+
+    Sandbox では creator_info が PUBLIC_TO_EVERYONE を返す。審査が下りていなくても
+    返るので、そのまま「審査が下りた」と読むと、Production が Draft のままなのに
+    通ったつもりで先へ進んでしまう。
+
+    判定は接頭辞1件の実測に基づくので、**投稿の可否には使わない**。投稿を止める
+    判断は tiktok.py の関門だけが持つ（実例1件で門番の語彙を増やさない）。
+    """
+    return bool(client_key) and client_key.startswith(SANDBOX_KEY_PREFIX)
+
+
 def upload_params(video_size: int) -> dict:
     """FILE_UPLOAD の source_info に入れるサイズ指定。
 

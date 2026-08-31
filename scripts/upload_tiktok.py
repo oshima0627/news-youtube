@@ -111,15 +111,27 @@ def main() -> None:
         die(str(e))
 
     if a.auth_only:
+        from scripts.tiktok_api import is_sandbox_key
+
         info = api.creator_info()
         options = info.get("privacy_level_options") or []
+        sandbox = is_sandbox_key(api.client.get("client_key"))
         print(f"✓ 認証しました: @{info.get('creator_username')}"
               f"（open_id={api.open_id()}）")
+        print(f"- 使っている鍵: {'Sandbox' if sandbox else 'Production'}")
         print(f"- 選べる公開範囲: {options}")
         if "PUBLIC_TO_EVERYONE" in options:
-            print("✓ 審査が下りています。公開投稿できます")
+            print("✓ このクライアントは公開投稿を選べます")
+            if sandbox:
+                # Sandbox は審査に関係なく公開範囲を返す。ここを「審査が下りた」と
+                # 読むと、Production が Draft のままなのに本番運用へ進んでしまう。
+                print("! ただしこれは Sandbox の鍵です。**Production の審査状況は"
+                      "これでは分かりません。**本番投稿の前に "
+                      "tiktok_client.json を Production の鍵に差し替えて"
+                      "もう一度確認してください")
         else:
-            print("! video.publish の審査が未了です。いま投稿すると"
+            print("! 公開投稿（PUBLIC_TO_EVERYONE）が選べません。"
+                  "video.publish の審査が未了だと、投稿しても"
                   "すべて自分だけ表示になります")
         return
 

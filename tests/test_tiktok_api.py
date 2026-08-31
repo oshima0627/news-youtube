@@ -255,3 +255,26 @@ def test_BOM付きで保存されたclient_jsonも読める(tmp_path, monkeypatc
     api_obj = api.TikTokApi.from_files(tmp_path)
     assert api_obj.client["client_key"] == "k"
     assert api_obj.open_id() == "o"
+
+
+# ── Sandbox の鍵を Production と取り違えない ──────────────────
+#
+# Sandbox では creator_info が PUBLIC_TO_EVERYONE を返す。審査が下りていなくても
+# 返る。「審査が下りています」と読んでしまうと、Production が Draft のままなのに
+# 通ったつもりで本番投稿の設定に進んでしまう。
+#
+# 判別は client_key の接頭辞（実測: Sandbox は "sbaw..." で始まる）。これは
+# **警告のためだけ**に使い、投稿の可否は判定しない。1件の実測に投稿の関門を
+# 預けない（CLAUDE.md「実例1件で門番の語彙を増やさない」）。
+
+def test_sandboxの鍵を見分ける():
+    assert api.is_sandbox_key("sbawj6skoedxw4zauh")
+
+
+def test_productionの鍵はsandbox扱いしない():
+    assert not api.is_sandbox_key("aw1234567890abcd")
+
+
+def test_鍵が無いときはsandbox扱いしない():
+    assert not api.is_sandbox_key("")
+    assert not api.is_sandbox_key(None)
