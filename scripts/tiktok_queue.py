@@ -36,6 +36,18 @@ def _write(path: Path, data) -> None:
                     encoding="utf-8")
 
 
+def _key(workdir) -> str:
+    """workdir を記録のキーに正規化する。
+
+    Windows では `Path("work/a/tiktok")` を `str()` するとバックスラッシュに
+    なる。CLI に `work/a/tiktok` と打っても記録は `work\a\tiktok` で入るので、
+    素の文字列比較だと同じ場所を別物として扱い、**重複防止が効かずに同じ動画が
+    2本 TikTok に並ぶ**。区切り文字をスラッシュに寄せて1つに決める
+    （2026-08-31 の初投稿が実際にバックスラッシュで記録された）。
+    """
+    return Path(workdir).as_posix()
+
+
 def load_queue(state_dir: Path) -> list[dict]:
     return _read(Path(state_dir) / QUEUE_NAME, [])
 
@@ -45,7 +57,13 @@ def save_queue(state_dir: Path, entries: list[dict]) -> None:
 
 
 def load_posted(state_dir: Path) -> dict:
-    return _read(Path(state_dir) / POSTED_NAME, {})
+    """投稿済みの記録。**キーは読むときにも正規化する。**
+
+    正規化を入れる前に書かれた記録（バックスラッシュ）が残っているので、
+    書くときだけ揃えると古い記録が引けなくなり、投稿済みの動画をもう一度
+    投稿してしまう。
+    """
+    return {_key(k): v for k, v in _read(Path(state_dir) / POSTED_NAME, {}).items()}
 
 
 def enqueue(state_dir: Path, workdir: str, due: datetime) -> None:
@@ -54,11 +72,11 @@ def enqueue(state_dir: Path, workdir: str, due: datetime) -> None:
     同じ workdir を二重に積まない。積むと同じ動画が2本 TikTok に並ぶ。
     投稿済みのものも積み直さない（run_daily を同じ題材で2回まわしたとき）。
     """
-    workdir = str(workdir)
+    workdir = _key(workdir)
     if workdir in load_posted(state_dir):
         return
     entries = load_queue(state_dir)
-    if any(e.get("workdir") == workdir for e in entries):
+    if any(_key(e.get("workdir", "")) == workdir for e in entries):
         return
     entries.append({"workdir": workdir, "due": due.isoformat()})
     save_queue(state_dir, entries)
@@ -74,7 +92,7 @@ def due_entries(state_dir: Path, now: datetime) -> list[dict]:
     posted = load_posted(state_dir)
     ready = []
     for entry in load_queue(state_dir):
-        if entry.get("workdir") in posted:
+        if _key(entry.get("workdir", "")) in posted:
             continue
         try:
             due = datetime.fromisoformat(entry["due"])
@@ -93,9 +111,9 @@ def mark_posted(state_dir: Path, workdir: str, result: dict) -> None:
     PUBLISH_COMPLETE を返してから）。init の 200 だけで記録すると、失敗した
     投稿が「済み」になって二度と出せなくなる。
     """
-    workdir = str(workdir)
+    workdir = _key(workdir)
     posted = load_posted(Path(state_dir))
     posted[workdir] = result
     _write(Path(state_dir) / POSTED_NAME, posted)
-    save_queue(state_dir,
-               [e for e in load_queue(state_dir) if e.get("workdir") != workdir])
+    save_queue(state_dir, [e for e in load_queue(state_dir)
+                           if _key(e.get("workdir", "")) != workdir])

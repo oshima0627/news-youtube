@@ -92,3 +92,32 @@ def test_枠の時刻が壊れていても他の投稿を巻き込まない(stat
     data.append({"workdir": "work/broken/tiktok", "due": "ぐちゃぐちゃ"})
     q.save_queue(state, data)
     assert [e["workdir"] for e in q.due_entries(state, NOW)] == ["work/good/tiktok"]
+
+
+# ── パスの表記ゆれで二重投稿しない ──────────────────────────────
+#
+# Windows では Path を str() するとバックスラッシュになる。CLI に
+# `work/a/tiktok` と打っても記録は `work\a\tiktok` で入る。同じ場所を
+# 別のキーとして扱うと、重複防止が効かず同じ動画が2本 TikTok に並ぶ。
+# 実際 2026-08-31 の初投稿は `work\1d04e9d8cd04\tiktok` で記録された。
+
+def test_区切り文字が違っても同じ場所として扱う(state):
+    q.enqueue(state, "work/abc/tiktok", NOW - timedelta(hours=1))
+    q.enqueue(state, "work" + chr(92) + "abc" + chr(92) + "tiktok",
+              NOW - timedelta(hours=1))
+    assert len(q.due_entries(state, NOW)) == 1
+
+
+def test_バックスラッシュで投稿済みならスラッシュでも取り出さない(state):
+    back = "work" + chr(92) + "abc" + chr(92) + "tiktok"
+    q.enqueue(state, back, NOW - timedelta(hours=1))
+    q.mark_posted(state, back, {"publish_id": "p1"})
+    q.enqueue(state, "work/abc/tiktok", NOW - timedelta(hours=1))
+    assert q.due_entries(state, NOW) == []
+
+
+def test_既存のバックスラッシュ記録も投稿済みとして読める(state):
+    """すでに書かれている記録を読み直せること（今回の初投稿がこの形）。"""
+    q.mark_posted(state, "work" + chr(92) + "abc" + chr(92) + "tiktok",
+                  {"publish_id": "p1"})
+    assert "work/abc/tiktok" in q.load_posted(state)
