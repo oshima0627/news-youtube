@@ -2,7 +2,7 @@
 
 最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
 実 API での認証に成功 → **TikTok への初投稿に成功（SELF_ONLY）。投稿経路は全部検証済み**。
-残るはデモ動画の撮影と審査申請）
+残るはデモ動画の撮影と審査申請。**デモ用に新しい題材の動画を1本作る必要がある**）
 
 ## いま何をしているのか
 
@@ -145,7 +145,18 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
 **読むときにも正規化する**（書くときだけ揃えると正規化前の記録が引けなくなって
 同じ事故が起きる）。既存の記録が引けることを実データで確認した。
 
-### 11. 審査に要る3ページを Cloudflare Workers で公開した
+### 11. 重複投稿の関門を post() の中へ移した（**CLAUDE.md が名指しする穴と同型**）
+
+重複防止をキューのフィルタ（`tiktok_queue.due_entries`）にだけ置いていたため、
+**`upload_tiktok.py` を直接叩く経路が素通りし、同じ動画を何度でも投稿できた**。
+`post()` は `load_posted` を一度も見ていなかった。
+
+CLAUDE.md の「関門は1つにして、全経路がそれを通る形にする／`run_daily` にだけ
+検証を置いた結果、手動CLI経路が素通りした」とまったく同じ形。全経路が通る
+`post()` の中へ移し、判定は尺より前に置いた（通信もアップロードもしないうちに
+止まる）。`tiktok.AlreadyPosted` / 終了コード8。
+
+### 12. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -154,7 +165,7 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 551 passed**（前回 435 → 今回 +116）。警告なし。
+- **`pytest` 556 passed**（前回 435 → 今回 +121）。警告なし。
 - **同じ題材から2本ビルドできた**（`work/1d04e9d8cd04/`）:
 
   ```
@@ -229,6 +240,13 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
   ```
 
   `state/tiktok_posted.json` に `status: PUBLISH_COMPLETE` で記録された。
+- **重複投稿の関門が実データで効くことを確認した**。同じ workdir をもう一度
+  叩くと、APIを一度も呼ばずに終了コード8で止まる:
+
+  ```
+  ✗ workd04e9d8cd04	iktok は投稿済みです
+    （publish_id=v_pub_file~v2-1.7680043967891195924）。
+  ```
 - **アカウント設定を元に戻したことを画面で確認した**: 非公開アカウント=オフ、
   コメント=誰でも（非公開にすると自動で「フォロワー」に変わるが、戻すと復帰する）。
 - **`meta.json` を正規の経路で作り直した**（手で編集していない）。
@@ -254,7 +272,8 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
 
 | 項目 | 状況 |
 |---|---|
-| デモ動画 | **未着手。** 投稿の実演を画面録画する必要がある（**Claude には録画できない**） |
+| デモ用の新しい動画 | **Claude の作業。** 台本を書いてビルドする（既存の1本は投稿済みで再投稿できない） |
+| デモ動画の撮影 | **本人の作業。** **Claude には画面録画ができない** |
 | Production の審査申請 | デモ動画が揃えば出せる。**申請ボタンは本人の確認を取ってから** |
 
 **コード側の未検証はもう無い。** 残っているのは TikTok の手続きだけ。
@@ -290,27 +309,41 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
 
 ## 次にやること
 
-1. **デモ動画を録る**（**Claude には画面録画ができない。本人の作業**）。
-   手順は 2026-08-31 に実際に通したものと同じ:
+1. **デモ用の新しい題材で TikTok バリアントを1本作る**（Claude の作業）。
+   `work/1d04e9d8cd04/tiktok` は投稿済みで、関門が再投稿を止める。
+   実測済み・未使用の検索語: `外国人 土地`。
 
-   1. `https://www.tiktok.com/setting` → プライバシー → **非公開アカウントをオン**
-   2. **画面録画を開始**
-   3. `python scripts/upload_tiktok.py work/<id>/tiktok --allow-self-only`
-      （別の題材で撮るなら先に `--tiktok-script` でバリアントを作る。
-      同じ動画を2回投稿しても記録が防ぐので、新しい題材を用意すること）
-   4. TikTok アプリで投稿された動画を確認するところまで録画
-   5. 録画停止 → **アカウントを公開に戻す**（コメント設定も戻ることを確認する）
+2. **デモ動画を録る**（**Claude には画面録画ができない。本人の作業**）。
+   手順は 2026-08-31 に実際に通したものと同じ。録画には
+   **選んだ products と scopes が全部映っている**必要がある:
 
-   mp4/mov・50MB以下・最大5本。選んだ products と scopes が全部映っていること。
+   - `upload_tiktok.py --auth-only` の実行（Login Kit / user.info.basic）
+   - `upload_tiktok.py work/<id>/tiktok --allow-self-only` の実行
+     （Content Posting API / video.publish）
+   - TikTok のプロフィールに投稿が並んでいるところ
+   - その動画を再生して内容と出典が見えるところ
 
-2. ~~本人が Sandbox の認証情報を置く~~ **完了**:
+   録画の条件: mp4 か mov、50MB以下、最大5本。
+   Windows なら Xbox Game Bar（`Win + Alt + R`）で撮れる。
+
+   前後の操作:
+
+   - 撮影前: `https://www.tiktok.com/setting` → プライバシー →
+     **非公開アカウントをオン**（これをしないと 403）
+   - 撮影後: **公開に戻す**。コメント設定が「誰でも」に戻ることも確認する
+     （非公開にすると自動で「フォロワー」に変わる）
+
+3. **録画ができたら審査画面にアップロードして Save → Submit for review。**
+   **申請ボタンは本人の確認を取ってから押すこと。**
+
+（完了済み）~~本人が Sandbox の認証情報を置く~~:
    `C:\Users\oshim\Documents\projects\news-youtube\tiktok_client.json` に
    `{"client_key": "...", "client_secret": "..."}`。
    取得元は https://developers.tiktok.com/app/7679774568128202772/sandbox/7679915999907088404
    の上部 Credentials（**タブが Sandbox であることを確認する。Production の鍵では
    Sandbox の投稿は通らない**）。置かれたらワークツリーへコピーして使う。
 
-3. ~~`--auth-only` を実行する~~ **完了**。
+（完了済み）~~`--auth-only` を実行する~~。
    同意画面は**私の操作できないウィンドウで開くので本人にクリックしてもらう**
    （Sandbox の Target User 追加のときもそうだった）。通れば OAuth と
    `creator_info` に**初めて実到達**する。Sandbox なので
@@ -320,10 +353,7 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
    `upload_tiktok.py --auth-only` → 動画の投稿 → TikTok 上での結果、までを
    画面録画する（mp4/mov、50MB以下）。**未承認アプリは Sandbox での実演が必須。**
 
-5. **録れたらアップロードして Save → Submit for review。**
-   **申請ボタンは本人の確認を取ってから押すこと。**
-
-6. **審査が下りたら Production の鍵に差し替えて1本投稿する**:
+4. **審査が下りたら Production の鍵に差し替えて1本投稿する**:
 
    ```bash
    python scripts/upload_tiktok.py --auth-only     # 審査状態も表示される
@@ -333,17 +363,17 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
    python scripts/post_tiktok_due.py --dry-run     # キューを確認
    ```
 
-7. **定時タスクを登録する**（枠の時刻に実際に投げる）:
+5. **定時タスクを登録する**（枠の時刻に実際に投げる）:
 
    ```
    schtasks /create /tn "tiktok-0725" /sc daily /st 07:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
    schtasks /create /tn "tiktok-1825" /sc daily /st 18:25 /tr "cmd /c cd /d <repo> && python scripts\post_tiktok_due.py >> tiktok.log 2>&1"
    ```
 
-8. **9/2 以降の YouTube の枠を埋める**（空きは 9/2 07:30 から）。実測済みで未使用の
+6. **9/2 以降の YouTube の枠を埋める**（空きは 9/2 07:30 から）。実測済みで未使用の
    検索語: `医師偏在指標 新潟`、`外国人 土地`。
 
-9. **8/31 以降に `myjKRuLTmXw`（教員不足）の再生数を他の回と比べる**
+7. **8/31 以降に `myjKRuLTmXw`（教員不足）の再生数を他の回と比べる**
    （自殺者数に触れているため配信制限の可能性。他の回は約1,200）。
 
 ## 触ってはいけないところ
@@ -353,6 +383,9 @@ Path を `str()` するとこうなる。CLI に `work/a/tiktok` と打っても
 - **未審査ガードを外さない。** `--allow-self-only` は経路確認専用。
 - **採用ゲート（`evidence.collect()`）を緩めない。** TikTok 版も同じゲートを通る。
 - **`state/*.json` を手で編集しない**（`tiktok_queue.json` / `tiktok_posted.json` を含む）。
+  キーは `Path(...).as_posix()` で正規化する。
+- **重複投稿の関門を `post()` から出さない。** 呼び出し側に戻すと、また手動CLIが
+  素通りする（2026-08-31 に実際に開いていた）。
 - **`work/<id>/tiktok/` を投稿前に消さない。** キューが `video.mp4` を参照する。
 - **PKCE の `code_challenge` を base64url に変えない。** TikTok は hex の SHA256。
 - **`tiktok_api.DEFAULT_REDIRECT_URI` を変えたら、TikTok アプリ側の登録も同時に
