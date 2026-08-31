@@ -53,6 +53,33 @@ video.upload is bundled with the product but is not used; posting always goes
 through Direct Post.
 ```
 
+## Sandbox（`local-desktop`）
+
+2026-08-31 作成。ID `7679915999907088404`。
+https://developers.tiktok.com/app/7679774568128202772/sandbox/7679915999907088404
+
+**未承認のアプリはここで実演したデモ動画でないと審査に出せない。** 実 API を
+審査前に叩けるので、HTTP 部分の検証にも使う。**Production とは別の
+client_key / client_secret を持つ**ので、切り替えるときは
+`tiktok_client.json` を差し替える。
+
+設定済み（再読み込み後も残っていることを確認）:
+
+| 項目 | 値 |
+|---|---|
+| Target Users | `naotaka_oshima`（2026-08-31 11:50 追加） |
+| Products | Login Kit + Content Posting API |
+| Direct Post | ON |
+| Scopes | `user.info.basic` / `video.publish` / `video.upload` |
+| Redirect URI | Desktop タブに `http://localhost:8723/callback` |
+| Category / Description / 3つのURL / App icon | Production と同じ |
+
+- **Platforms の Desktop にチェックを入れるまで Redirect URI の入力欄が出ない。**
+  「Turn on Configure for Desktop to add your Desktop Redirect URI」と出ていたら、
+  上の Platforms を先に見る。
+- **Sandbox も必須項目が全部埋まるまで Apply changes できない**（Production と同じ）。
+- Target User の追加は「最大1時間反映にかかる」と表示される。
+
 ## 3ページの配信（Cloudflare Workers）
 
 `site/` に置いてある。`cd site && npx wrangler deploy` で更新できる。
