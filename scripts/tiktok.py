@@ -101,13 +101,18 @@ def resolve_privacy_level(creator_info: dict,
     Sandbox の `creator_info` は PUBLIC_TO_EVERYONE を含む3つを返したが、
     その値で投稿すると `video/init/` が HTTP 403 で拒否した
     （`unaudited_client_can_only_post_to_private_accounts`）。
-    ドキュメントは「未審査の投稿は SELF_ONLY に強制される」と読めるが、
-    **実際は強制ではなく拒否**だった。
+    **SELF_ONLY を指定しても同じ 403 だった。**
 
-    したがってこの関数は「審査が下りたか」を判定していない。判定しているのは
-    「このクライアントで公開範囲として何が選べるか」だけ。**審査状態を確かめる
-    唯一の方法は、実際に投稿してみること。** それでも残しているのは、選べない
-    値を送って後段で落ちるより手前で止まるほうが安いから。
+    エラーが指しているのは投稿の公開範囲ではなく **TikTok アカウントの設定**。
+    ガイドラインいわく "All user accounts using the API client to post must be
+    set to private at the time of posting."。つまり審査が下りるまでは、
+    **アカウントを非公開にしていないと一切投稿できない**（他に、24時間で
+    5ユーザーまで・内容は SELF_ONLY のみ、という上限もある）。
+
+    したがってこの関数は「審査が下りたか」も「投稿できるか」も判定していない。
+    判定しているのは「このクライアントで公開範囲として何が選べるか」だけ。
+    それでも残しているのは、選べない値を送って後段で落ちるより手前で止まる
+    ほうが安いから。
     """
     options = creator_info.get("privacy_level_options") or []
     if "PUBLIC_TO_EVERYONE" in options:

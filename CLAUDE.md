@@ -71,12 +71,13 @@ python scripts/post_tiktok_due.py --dry-run   # TikTok の投稿待ちを見る
   **理由**: TikTok の Creator Rewards は60秒以上の動画だけが対象で、これが
   最も多い失格理由。59秒版は投稿自体は通るので、止めないと「成功ログだけ出て
   価値ゼロ」の本数が静かに積み上がる。**この下限を下げない。**
-- **審査が下りるまで公開投稿はできない。** 2026-08-31 に実測: `creator_info` が
-  `PUBLIC_TO_EVERYONE` を返しても、その値で投稿すると `video/init/` が HTTP 403
-  （`unaudited_client_can_only_post_to_private_accounts`）で拒否する。
-  **`privacy_level_options` を審査状態の指標に使わないこと。**
-  `resolve_privacy_level` の関門は「選べる値かどうか」を見ているだけで、
-  審査の可否は判定していない。経路確認は `--allow-self-only`。
+- **審査が下りるまで、アカウントを非公開にしないと一切投稿できない。**
+  2026-08-31 に実測: `PUBLIC_TO_EVERYONE` でも `SELF_ONLY` でも `video/init/` が
+  HTTP 403（`unaudited_client_can_only_post_to_private_accounts`）で拒否した。
+  エラーが指すのは投稿の公開範囲ではなく **TikTok アカウントの設定**
+  （"All user accounts using the API client to post must be set to private at
+  the time of posting."）。**`privacy_level_options` を審査状態の指標に
+  使わないこと** — 未審査でも3つ返る。
 - 台本は `--tiktok-script`（410〜450字）。**`--script` と一緒に指定する。**
   片方だけ人の原稿だと、同じ題材の2本が別の一次資料に基づきうる。
 - **`run_daily.py` は TikTok API を触らない。** 枠の時刻はキュー
