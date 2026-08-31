@@ -62,12 +62,23 @@ schtasks（07:25 / 18:25）→ post_tiktok_due.py → due を過ぎた未投稿�
    `PUBLIC_TO_EVERYONE` が無ければ投稿しない。`--allow-self-only` を明示した
    ときだけ SELF_ONLY で通す（審査前の経路確認用）。
 
-   **2026-08-31 追記（実測により当初の想定を訂正）**: この関門は**審査状態を
-   判定していない**。Sandbox の `creator_info` は PUBLIC_TO_EVERYONE を返したが、
-   その値で投稿すると HTTP 403 `unaudited_client_can_only_post_to_private_accounts`
-   で拒否された。「未審査の投稿は SELF_ONLY に強制される（APIは成功を返す）」
-   という当初の前提は誤りで、**実際は拒否される**。誰にも届かない動画が
-   成功ログ付きで積み上がる事故は起きない。
+   **2026-08-31 追記（実測により当初の想定を訂正）**: この関門は**審査状態も
+   投稿の可否も判定していない**。Sandbox の `creator_info` は
+   PUBLIC_TO_EVERYONE を含む3つを返したが、`PUBLIC_TO_EVERYONE` でも
+   `SELF_ONLY` でも投稿は HTTP 403
+   `unaudited_client_can_only_post_to_private_accounts` で拒否された。
+
+   エラーが指すのは投稿の公開範囲ではなく **TikTok アカウントの設定**。
+   ガイドライン: "All user accounts using the API client to post must be set to
+   private at the time of posting."。審査前の投稿には次の制約がある:
+
+   - **アカウントを非公開に設定していること**
+   - 24時間で5ユーザーまで
+   - 内容は SELF_ONLY のみ
+
+   当初の前提「未審査の投稿は SELF_ONLY に強制される（APIは成功を返す）」は
+   誤り。**実際は拒否される**ので、誰にも届かない動画が成功ログ付きで積み上がる
+   事故は起きない。
 3. **アカウント取り違えガード** — `meta.json` の `expected_tiktok_open_id` と
    認証中の open_id が一致しなければ投稿しない（YouTube の `expected_channel_id` と同型）。
 
