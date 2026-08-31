@@ -238,3 +238,20 @@ def test_authorizeの側でも同じ用意手順を出す(tmp_path):
     msg = str(e.value)
     assert "Desktop" in msg
     assert api.DEFAULT_REDIRECT_URI in msg
+
+
+def test_BOM付きで保存されたclient_jsonも読める(tmp_path, monkeypatch):
+    """Windows のエディタは UTF-8 に BOM を付けて保存することがある。
+
+    人が手で作るファイルなので、BOM で `json.loads` が落ちると
+    「JSONとして読めません」としか出ず、原因（見えない3バイト）に辿り着けない。
+    """
+    (tmp_path / "tiktok_client.json").write_text(
+        json.dumps({"client_key": "k", "client_secret": "s"}),
+        encoding="utf-8-sig")
+    (tmp_path / "tiktok_token.json").write_text(
+        json.dumps({"access_token": "a", "refresh_token": "r", "open_id": "o",
+                    "expires_at": 9_999_999_999}), encoding="utf-8-sig")
+    api_obj = api.TikTokApi.from_files(tmp_path)
+    assert api_obj.client["client_key"] == "k"
+    assert api_obj.open_id() == "o"
