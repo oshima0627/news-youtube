@@ -1,7 +1,7 @@
 # HANDOFF
 
-最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築。
-本人の作業待ち: Sandbox の client_key / client_secret を置くこと）
+最終更新: 2026-08-31（セッション: TikTok 投稿の実装 → アプリ登録 → Sandbox 構築 →
+**実 API での認証に成功**。本人の判断待ち: テスト投稿を公開でやるか自分だけ表示でやるか）
 
 ## いま何をしているのか
 
@@ -14,8 +14,8 @@ Production 側の未入力は**デモ動画だけ**。ただしポータルは�
 保存できないので、**Production の入力はまだブラウザのタブ上にしかない**
 （下記「いま詰まっているところ」）。
 
-**次の一手は本人の作業**: Sandbox の `client_key` / `client_secret` を
-`tiktok_client.json` に置くこと。置けば `--auth-only` で**実 API に初めて到達する**。
+**Sandbox の認証は完了した。実 API に到達済み。** 次の一手は「テスト投稿を
+どの公開範囲でやるか」の判断（下記「次にやること」1）。
 
 YouTube の運用は変わっていない: **枠は 2026-09-01 18:30 JST まで埋まっている
 （予約11本）。次の空きは 9/2 07:30。** `ANTHROPIC_API_KEY` は無いので、台本は
@@ -69,7 +69,22 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 付けて保存することがあり、`json.loads` はそれで落ちる。出るのは「JSONとして
 読めません」だけで原因に辿り着けないので、`utf-8-sig` で読むようにした。
 
-### 6. 審査に要る3ページを Cloudflare Workers で公開した
+### 6. Sandbox の鍵で実 API に到達した（**この工程で最大の成果**）
+
+`upload_tiktok.py --auth-only` が通り、OAuth（PKCE の hex SHA256 を含む）・
+トークン保存・`creator_info/query` が**本物のサーバで動くことを確認**した。
+ここは実装以来ずっと未実行だった部分。
+
+### 7. Sandbox の鍵で「審査が下りた」と読ませないようにした
+
+最初の実行で `--auth-only` は「✓ 審査が下りています」と表示した。**誤り。**
+Sandbox の `creator_info` は審査に関係なく `PUBLIC_TO_EVERYONE` を返すのに対し、
+Production はまだ Draft で申請すらしていない。このまま進むと「通ったつもり」で
+本番運用に入る。`client_key` の接頭辞（実測: Sandbox は `sbaw...`）で見分けて
+警告する。**接頭辞は1件しか実測していないので警告にだけ使い、投稿の可否には
+使わない**（`tiktok.py` の関門だけが投稿を止める）。
+
+### 8. 審査に要る3ページを Cloudflare Workers で公開した
 
 `site/`（`wrangler.jsonc` + `src/index.js`）。`cd site && npx wrangler deploy`。
 利用規約・プライバシーポリシー・サービス説明と、URL 所有確認の署名ファイルを配信する。
@@ -78,7 +93,7 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 545 passed**（前回 435 → 今回 +110）。警告なし。
+- **`pytest` 548 passed**（前回 435 → 今回 +113）。警告なし。
 - **同じ題材から2本ビルドできた**（`work/1d04e9d8cd04/`）:
 
   ```
@@ -130,6 +145,20 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
   Category=News / Description / 3つのURL / App icon。
 - **Client secret のページからの読み出しは安全機構に止められた**（妥当な動作。
   秘密鍵を会話の記録に残さずに済む）。**本人が手で置く方針に切り替えた。**
+- **実 API での認証に成功した**（Sandbox の鍵、2026-08-31）:
+
+  ```
+  ✓ tiktok_token.json を保存しました
+  ✓ 認証しました: @naotaka_oshima（open_id=-000jeuhnstVO-12Jyf4ruZN0AXnIL1v9vN0）
+  - 使っている鍵: Sandbox
+  - 選べる公開範囲: ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'SELF_ONLY']
+  ```
+
+- **`creator_info/query` の実応答**:
+  `max_video_post_duration_sec=600` / `creator_username=naotaka_oshima` /
+  `stitch_disabled=false` / `comment_disabled=false` / `duet_disabled=false`。
+- **実データで3つの関門を通した**: 実尺74.17秒 → 尺の下限(61秒)✓ /
+  アカウント上限(600秒)✓ / 公開範囲の解決 → `PUBLIC_TO_EVERYONE`✓。
 
 - **`wrangler --version` = 4.127.1、`wrangler whoami` は認証済み**（アカウントの
   権限一覧が返った）。
@@ -150,7 +179,7 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 
 | 項目 | 状況 |
 |---|---|
-| Sandbox の認証情報 | **本人の作業待ち。** `client_key` / `client_secret` を `tiktok_client.json` に置く |
+| テスト投稿の公開範囲 | **本人の判断待ち。** 公開で出すか、`--allow-self-only` で自分だけ表示にするか |
 | デモ動画（Production） | **未着手。** Sandbox での端から端までの画面録画が必要 |
 
 **Production はデモ動画が埋まるまで Save も Submit もできない。** つまり
@@ -162,11 +191,15 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 
 ## 未検証のもの
 
-- **TikTok に1本も投稿していない。** HTTP を実際に投げる部分
-  （`tiktok_api.TikTokApi` の `creator_info` / `publish` / `_fetch_status` と
-  `authorize()` の OAuth 往復）は**一度も本物のサーバに当たっていない**。
+- **TikTok に1本も投稿していない。** `authorize()` と `creator_info()` は
+  実サーバで確認できたが、**`publish()` と `_fetch_status()` は未実行**。
+  動画の送信（PUT）と完了確認のポーリングはまだ本物に当たっていない。
+- **Production の審査状況は不明。** 申請すらしていない（Draft）。Sandbox で
+  `PUBLIC_TO_EVERYONE` が返るのは審査とは無関係。
 - **Content Posting API が個人アカウントで使えるかは未確認。** Business
   アカウント必須だと Creator Rewards（個人アカウント必須）と両立しない。
+  ただし `@naotaka_oshima` で `creator_info` が通ったので、少なくとも
+  このアカウントでは API が使える。
 - **`work/1d04e9d8cd04/tiktok/meta.json` の `expected_tiktok_open_id` は空。**
   認証前に作ったため、このバリアントはこのままでは投稿できない。認証後に作り直す。
 - 今回の題材（医師偏在）は YouTube にも投稿していない（`--dry-run`）。
@@ -174,21 +207,29 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 
 ## 次にやること
 
-1. **本人が Sandbox の認証情報を置く**（依頼済み）:
+1. **テスト投稿の公開範囲を決めて実行する。**
+   `--allow-self-only` を付けないと `PUBLIC_TO_EVERYONE` に解決され、
+   **@naotaka_oshima に実際に公開投稿される**（Sandbox の鍵でも投稿先は本物）。
+   実行前に `work/1d04e9d8cd04/tiktok/meta.json` の
+   `expected_tiktok_open_id` に今日の open_id を入れて作り直すこと
+   （空のままだとアカウント取り違えガードが止める＝設計どおり）。
+
+   ```bash
+   python scripts/upload_tiktok.py work/<id>/tiktok --allow-self-only
+   ```
+
+2. ~~本人が Sandbox の認証情報を置く~~ **完了**:
    `C:\Users\oshim\Documents\projects\news-youtube\tiktok_client.json` に
    `{"client_key": "...", "client_secret": "..."}`。
    取得元は https://developers.tiktok.com/app/7679774568128202772/sandbox/7679915999907088404
    の上部 Credentials（**タブが Sandbox であることを確認する。Production の鍵では
    Sandbox の投稿は通らない**）。置かれたらワークツリーへコピーして使う。
 
-2. **`python scripts/upload_tiktok.py --auth-only` を実行する。**
+3. ~~`--auth-only` を実行する~~ **完了**。
    同意画面は**私の操作できないウィンドウで開くので本人にクリックしてもらう**
    （Sandbox の Target User 追加のときもそうだった）。通れば OAuth と
    `creator_info` に**初めて実到達**する。Sandbox なので
    `privacy_level_options` は `SELF_ONLY` だけになるはず。
-
-3. **`--allow-self-only` で1本投稿してみる。** 通れば `publish` /
-   `status/fetch` まで実検証できる。デモ動画で見せる内容もこれで確定する。
 
 4. **デモ動画を録る。** Developer Portal の **Sandbox** タブを使い、
    `upload_tiktok.py --auth-only` → 動画の投稿 → TikTok 上での結果、までを
@@ -238,6 +279,10 @@ ID `7679915999907088404`。**未承認アプリは Sandbox で実演したデモ
 - **Sandbox と Production の client_key / client_secret を混ぜない。** 別物で、
   取り違えると投稿が通らない。`tiktok_client.json` をどちらの鍵にしているか意識する。
 - **client_secret を会話やコミットに残さない。** 本人が手で置く。
+- **Sandbox の `PUBLIC_TO_EVERYONE` を「審査が下りた」と読まない。** Sandbox は
+  審査に関係なくそれを返す。Production の審査状況は Production の鍵でしか分からない。
+- **Sandbox の鍵でも投稿先は本物のアカウント。** `--allow-self-only` を付けない
+  投稿は実際に公開される。
 - 長尺（16:9）は当面作らない。乗る面が無く、関連動画からの回遊も15日で1再生。
 - チャンネルを動かす操作の前に main を取り込んで state を最新にする。
 - ログを PowerShell で読むときは `Get-Content -Encoding UTF8`。
