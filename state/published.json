@@ -459,8 +459,8 @@
       "publish_at": "2026-09-02T07:30:00+09:00"
     },
     "election-koja-09021830": {
-      "youtube_video_id": "vvpSRwF072M",
-      "url": "https://www.youtube.com/watch?v=vvpSRwF072M",
+      "youtube_video_id": "-K_GQlJ4oR0",
+      "url": "https://www.youtube.com/watch?v=-K_GQlJ4oR0",
       "title": "古謝玄太氏の公約 県民所得231.5万円を500万円に 三つの倍増と辺野古容認",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
@@ -479,8 +479,8 @@
       "publish_at": "2026-09-03T18:30:00+09:00"
     },
     "election-koja-numbers-09041830": {
-      "youtube_video_id": "yHT9_jXuvlY",
-      "url": "https://www.youtube.com/watch?v=yHT9_jXuvlY",
+      "youtube_video_id": "phur61vle8A",
+      "url": "https://www.youtube.com/watch?v=phur61vle8A",
       "title": "古謝玄太氏の「三つの倍増」を数字で確かめる 500万円は全国平均の1.5倍",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
@@ -489,14 +489,24 @@
       "publish_at": "2026-09-04T18:30:00+09:00"
     },
     "election-koja-detail-09051830": {
-      "youtube_video_id": "BgIhdx43dSo",
-      "url": "https://www.youtube.com/watch?v=BgIhdx43dSo",
+      "youtube_video_id": "LOYwJw6tBUo",
+      "url": "https://www.youtube.com/watch?v=LOYwJw6tBUo",
       "title": "古謝玄太氏の120の政策を読む 食料品の消費税ゼロ・保険料引き下げ・給食費無償化",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
       "publish_at": "2026-09-05T18:30:00+09:00"
+    },
+    "election-tamaki-detail-09061830": {
+      "youtube_video_id": "BKwnK8HFczE",
+      "url": "https://www.youtube.com/watch?v=BKwnK8HFczE",
+      "title": "玉城デニー氏の政策264項目を読む 18歳まで医療費無料化・給食費無償化の拡充",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-06T18:30:00+09:00"
     }
   }
 }

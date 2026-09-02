@@ -116,3 +116,16 @@ def test_テキスト層の無いPDFは一次資料に使わない():
 def test_政策集のURLはPDFを指している():
     for key in ("koja-detail", "tamaki-detail"):
         assert election.MANIFESTO_SOURCES[key].url.lower().endswith(".pdf")
+
+
+def test_文字化けした抽出結果は一次資料に使わない():
+    # 埋め込みフォントに ToUnicode マッピングが無いPDFは、文字数だけは
+    # 取れるので MIN_PDF_CHARS を通ってしまう。玉城氏の政策集PDFで実際に踏んだ。
+    garbled = "৓σχʔ" * 300
+    with pytest.raises(election.SourceUnreadable):
+        election._assert_readable(garbled, "https://example.invalid/x.pdf")
+
+
+def test_日本語として読める資料は通る():
+    ok = "沖縄県知事選挙に立候補している候補者が公表している政策です。" * 20
+    assert election._assert_readable(ok, "https://example.invalid/x.html") == ok

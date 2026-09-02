@@ -47,6 +47,14 @@ MAX_BYTES = 40 * 1024 * 1024
 # 照合できないものを「一次資料」として通すと、この経路の唯一の関門が
 # 無効になるので、短すぎる抽出結果は失敗として扱う。
 MIN_PDF_CHARS = 500
+# 抽出できた文字が**日本語として読めるか**の下限（ひらがなの比率）。
+# 文字数だけを見ていると、埋め込みフォントに ToUnicode マッピングが無いPDF
+# （CID がそのまま出てくる）が「3216字取れた」として通ってしまう。実測:
+#   古謝の政策集PDF 0.334 / 古謝の公約ページ 0.299 / 玉城の政策ページ 0.229
+#   玉城の政策集PDF 0.000  ← 全文が化けている
+# 逐語照合は「一致しない」で止まるので誤った動画にはならないが、原因が
+# 「引用の書き方が悪い」に見えてしまい、資料が読めていないことに気づけない。
+MIN_KANA_RATIO = 0.10
 
 
 class UnknownCandidate(ValueError):
@@ -91,6 +99,11 @@ MANIFESTO_SOURCES: dict[str, ManifestoSource] = {
         person="古謝玄太",
         context="古謝玄太「沖縄を前に進める120の政策」",
     ),
+    # 注意（2026-09-02 実測）: 玉城氏の政策集PDFは埋め込みフォントに
+    # ToUnicode マッピングが無く、抽出テキストが全文化ける（ひらがな比率
+    # 0.000）。_assert_readable が SourceUnreadable で弾くので、この資料は
+    # 現状使えない。玉城氏の詳細な政策は "tamaki" の HTML ページ
+    # （11113字・7つの柱の全項目）に載っているので、深掘りはそちらを使う。
     "tamaki-detail": ManifestoSource(
         url="https://tamakidenny.com/wp2/wp-content/uploads/2026/08/"
             "2026%E7%8E%89%E5%9F%8E%E3%83%87%E3%83%8B%E3%83%BC%E7%9F%A5%E4%BA"
@@ -103,6 +116,25 @@ MANIFESTO_SOURCES: dict[str, ManifestoSource] = {
 _TAG_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>",
                      re.IGNORECASE | re.DOTALL)
 _WS_RE = re.compile(r"\s+")
+_KANA_RE = re.compile(r"[ぁ-ゟ]")
+
+
+def _assert_readable(text: str, url: str) -> str:
+    """抽出結果が日本語として読める形かを確かめる。
+
+    読めない資料を「取れた」と扱うと、逐語照合の相手が実質的に存在しない
+    まま関門を通ったことになる。照合そのものは失敗するので誤った動画には
+    ならないが、原因が引用の書き方にあるように見えて追えなくなる。
+    """
+    body = "".join(text.split())
+    ratio = len(_KANA_RE.findall(body)) / max(len(body), 1)
+    if ratio < MIN_KANA_RATIO:
+        raise SourceUnreadable(
+            f"取り出したテキストが日本語として読めません"
+            f"（ひらがな比率 {ratio:.3f} < {MIN_KANA_RATIO}）: {url}。"
+            "PDFに ToUnicode マッピングが無い等で文字化けしています。"
+            "この資料は逐語照合ができないため一次資料に使えません")
+    return text
 
 
 def _strip_html(raw: str) -> str:
@@ -145,8 +177,8 @@ def _fetch(url: str) -> str:
             f"一次資料が大きすぎます: {len(blob)} > {MAX_BYTES}（{url}）")
     ctype = r.headers.get("content-type", "").lower()
     if "application/pdf" in ctype or url.lower().endswith(".pdf"):
-        return _pdf_text(blob)
-    return _strip_html(r.text)
+        return _assert_readable(_pdf_text(blob), url)
+    return _assert_readable(_strip_html(r.text), url)
 
 
 def collect(candidate: str, quote: str, *, figure: str = "") -> Evidence:
