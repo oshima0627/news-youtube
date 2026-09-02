@@ -162,3 +162,30 @@ def test_downloadは渡された出典表記を使う(tmp_path, monkeypatch):
                           credit="画像: 内閣官房内閣広報室 / CC BY 4.0（https://x）")
 
     assert rec["attribution"] == "画像: 内閣官房内閣広報室 / CC BY 4.0（https://x）"
+
+
+# --- Wikimedia のサムネイル配信ホスト -------------------------------------
+# commons の imageinfo は thumb.wikimedia.org を返すことがある
+# （upload.wikimedia.org と同じ内容を配る Wikimedia 自身のホスト）。
+# 許可リストに無かったため、そのホストが返った題材は download が
+# ValueError を投げ、run_daily 側で「画像を取得できません」として
+# **題材ごと見送られていた**（フォールバックもしない）。
+# 2026-09-02 に 玉城デニー の記事画像で実際に踏んだ。
+
+def test_wikimedia_のサムネイルホストも通る():
+    assert is_allowed(
+        "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/"
+        "Denny_Tamaki.jpg/1280px-Denny_Tamaki.jpg") is True
+
+
+def test_wikimedia_を騙るホストは通さない():
+    assert is_allowed("https://thumb.wikimedia.org.evil.com/x.jpg") is False
+    assert is_allowed("https://evil-thumb.wikimedia.org.co/x.jpg") is False
+
+
+def test_サムネイルホストの出典表記も_commons_扱いになる():
+    # 汎用の分岐に落ちると「出典: thumb.wikimedia.org」という、
+    # クレジットとして意味をなさない表記が説明欄に出る。
+    url = ("https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/"
+           "Denny_Tamaki.jpg/1280px-Denny_Tamaki.jpg")
+    assert attribution(url) == f"画像: Wikimedia Commons（{url}）"

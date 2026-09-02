@@ -457,6 +457,36 @@
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01720260727/118",
       "publish_at": "2026-09-02T07:30:00+09:00"
+    },
+    "election-koja-09021830": {
+      "youtube_video_id": "vvpSRwF072M",
+      "url": "https://www.youtube.com/watch?v=vvpSRwF072M",
+      "title": "古謝玄太氏の公約 県民所得231.5万円を500万円に 三つの倍増と辺野古容認",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kojagenta.com/manifest/",
+      "publish_at": "2026-09-02T18:30:00+09:00"
+    },
+    "election-tamaki-09031830": {
+      "youtube_video_id": "wL43dLccqLg",
+      "url": "https://www.youtube.com/watch?v=wL43dLccqLg",
+      "title": "玉城デニー氏の政策 7つの柱と鉄軌道 戦後100年に向けた交通の抜本改革",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-03T18:30:00+09:00"
+    },
+    "election-koja-numbers-09041830": {
+      "youtube_video_id": "yHT9_jXuvlY",
+      "url": "https://www.youtube.com/watch?v=yHT9_jXuvlY",
+      "title": "古謝玄太氏の「三つの倍増」を数字で確かめる 500万円は全国平均の1.5倍",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kojagenta.com/manifest/",
+      "publish_at": "2026-09-04T18:30:00+09:00"
     }
   }
 }

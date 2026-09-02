@@ -20,7 +20,12 @@ from urllib.parse import urlparse
 
 import requests
 
-ALLOWED_HOSTS = ("upload.wikimedia.org",)
+# Wikimedia は同じ画像を2つのホストで配る。commons の imageinfo が
+# どちらを返すかは時期によって変わり、thumb 側が返ったときに
+# 許可リストから漏れていると、その題材は画像が取れず**見送られる**
+# （汎用画像へのフォールバックは resolve 側にしか無い）。
+WIKIMEDIA_HOSTS = ("upload.wikimedia.org", "thumb.wikimedia.org")
+ALLOWED_HOSTS = WIKIMEDIA_HOSTS
 ALLOWED_SUFFIX = ".go.jp"
 TIMEOUT = 30
 
@@ -55,7 +60,7 @@ def attribution(url: str) -> str:
     if host.endswith("kantei.go.jp"):
         return (f"出典: 首相官邸ホームページ（{url}）\n"
                 f"※本コンテンツは上記を{EDITOR}が加工して作成しています。")
-    if host == "upload.wikimedia.org":
+    if host in WIKIMEDIA_HOSTS:
         return f"画像: Wikimedia Commons（{url}）"
     return (f"出典: {host}（{url}）\n"
             f"※本コンテンツは上記を{EDITOR}が加工して作成しています。")
