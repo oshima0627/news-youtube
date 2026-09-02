@@ -233,3 +233,10 @@ def test_行頭禁則は維持される():
     from scripts.draw import _NO_LINE_START
     for line in _wrap("これは試験です。次の文もあります。さらに続きます。", 300)[1:]:
         assert line[0] not in _NO_LINE_START, line
+
+
+def test_括弧の中では折らない():
+    # 引用は1つのまとまり。途中で切ると読み手が繋ぎ直すことになる
+    # （hiroyuki-youtube が 2026-08-14 に同じ問題を踏んでいる）。
+    lines = _wrap("返ってくるのは「場所を変えるか、順序を変えるか」でした。", 900)
+    assert lines[0] == "返ってくるのは", lines

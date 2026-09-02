@@ -205,6 +205,11 @@ _BREAK_AFTER = "、。，．！？」』）］｝〉》"      # この文字の�
 _BREAK_BEFORE = "「『（［｛〈《"                # この文字の直前で切る
 _PARTICLES = "はがをにへとでもやのかねよ"       # 助詞の直後も自然
 
+# **括弧の中では折らない。** 引用は1つのまとまりで、途中で切ると読み手が
+# 繋ぎ直すことになる（「場所を変えるか、／順序を変えるか」のように割れる）。
+_OPEN_BRACKETS = "（［｛「『〈《〔"
+_CLOSE_BRACKETS = "）］｝」』〉》〕"
+
 # 切れ目を探して戻れる範囲。これ以上戻ると行が短くなりすぎて、
 # かえって読みにくい（1行だけ極端に短い段差ができる）。
 _BACKTRACK_RATIO = 0.6
@@ -213,8 +218,23 @@ _BACKTRACK_RATIO = 0.6
 _HIRAGANA = re.compile(r"[ぁ-ゟ]")
 
 
-def _break_score(atoms: list[str], j: int) -> int:
+def _atom_depths(atoms: list[str]) -> list[int]:
+    """各 atom の開始時点の括弧の深さ。depths[j] は j の直前で折るときの深さ。"""
+    depths, depth = [], 0
+    for a in atoms:
+        depths.append(depth)
+        for ch in a:
+            if ch in _OPEN_BRACKETS:
+                depth += 1
+            elif ch in _CLOSE_BRACKETS:
+                depth = max(0, depth - 1)
+    return depths
+
+
+def _break_score(atoms: list[str], j: int, depths: list[int]) -> int:
     """atoms[:j] で改行したときの自然さ。大きいほど良い、0 なら語の途中。"""
+    if depths[j] > 0:                 # 括弧の中。ここは切れ目として選ばない
+        return 0
     prev, nxt = atoms[j - 1], atoms[j]
     if prev[-1] in _BREAK_AFTER:
         return 4
@@ -230,7 +250,8 @@ def _break_score(atoms: list[str], j: int) -> int:
     return 0
 
 
-def _choose_break(atoms: list[str], start: int, n: int) -> int:
+def _choose_break(atoms: list[str], start: int, n: int,
+                  depths: list[int]) -> int:
     """幅で決まった位置 n から、自然な切れ目まで戻した位置を返す。
 
     戻れる下限は行の長さ（n - start）に対する割合で決める。絶対位置で
@@ -241,7 +262,7 @@ def _choose_break(atoms: list[str], start: int, n: int) -> int:
     for j in range(n, floor - 1, -1):
         if j >= len(atoms) or j <= start:
             continue
-        score = _break_score(atoms, j)
+        score = _break_score(atoms, j, depths)
         if score > best_score:            # 同点なら後ろ（行が長いほう）を採る
             best, best_score = j, score
     return best
@@ -259,6 +280,7 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
     """
     text = normalize_newlines(text)
     atoms = _ATOM_RE.findall(text)
+    depths = _atom_depths(atoms)
     lines, start = [], 0
     while start < len(atoms):
         n = start
@@ -273,7 +295,7 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
             lines.append("".join(atoms[start:]))
             break
         # n は「入りきらなかった最初の atom」の位置＝幅で決まる改行位置
-        cut = _choose_break(atoms, start, n) if n - start > 1 else n
+        cut = _choose_break(atoms, start, n, depths) if n - start > 1 else n
         cut = max(cut, start + 1)          # 1行に最低1 atom は入れる
         lines.append("".join(atoms[start:cut]))
         start = cut
