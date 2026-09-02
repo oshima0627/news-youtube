@@ -3,7 +3,7 @@
 最終更新: 2026-09-02（セッション: 沖縄県知事選の**5本**を作って予約。選挙用の別経路
 `run_election.py` を新設。公約PDFにも対応。Wikimedia のサムネイルホストの
 取りこぼし、タイトな顔写真が切れる問題、テロップが語の途中で改行される
-問題を修正）
+問題を修正。**同じ改行の修正を他リポジトリへ展開**）
 
 ## いま何をしているのか
 
@@ -105,7 +105,53 @@ python scripts/frame_photo.py work/<id>   # そのあと build し直す
 **不自然な改行は 57/158（36%）→ 8/158（5%）。** はみ出しは0のまま。
 テスト `tests/test_draw.py` に6件追加。
 
-### 5. `scripts/photos.py` — Wikimedia のサムネイルホストを許可（既存欠陥の修正）
+### 5. 同じ改行の修正を他リポジトリへ展開した
+
+`projects` 配下 41 リポジトリを調べ、日本語テロップの折り返しを持つのは
+4つだけだった（`textbbox` を使う他のスクリプトは短い見出しのみ）。
+同じ5文で測った結果:
+
+| リポジトリ | 変更前（不自然/総数, 数値の分断） | 変更後 |
+|---|---|---|
+| news-youtube | 10/12, 2 | 1/15, 0 |
+| tora-kirinuki | 11/13, 2 | 1/15, 0 |
+| hiroyuki-youtube | 7/14, 1 | 2/15, 0 |
+| com.-youtube | 2/14, 1 | 2/15, 0 |
+
+- **tora-kirinuki**: `wrap()` が幅を見て1文字ずつ折るだけだったので、
+  news-youtube と同じ実装（atom・切れ目の採点・括弧の深さ）を入れた。
+  `tests/test_draw.py` 6件を新設。**pytest 200 passed。push 済み。**
+- **hiroyuki-youtube**: 読点・括弧の処理は既にあった（2026-08-14）。
+  数値＋単位の保護と、助詞・ひらがな→漢字の優先を足した。既存の
+  「括弧の中で折らない」挙動は旧実装と出力を比較して不変を確認。
+  テストが無かったので `tests/test_draw.py` 4件を新設。**push 済み。**
+- **com.-youtube**: 文字種変化の採点まで持っていたが、「万」と「5」も
+  文字種変化にあたるため**数値を優先して割っていた**。数値の内側を
+  0点にした。`pytest 143 passed`。**push できていない（下記）。**
+- **news-youtube**: 他リポジトリと突き合わせた結果、hiroyuki が既に
+  解いていた「括弧の中では折らない」が無いと分かったので追加した。
+  **予約済み5本のテロップ出力は変化なし**（比較して確認）。
+
+#### com.-youtube は push できていない
+
+`git push` が GitHub の **Push Protection（シークレット検出）** で拒否される。
+原因は**私の変更ではなく、以前からローカルに溜まっていた自動コミット**:
+
+```
+45bc225 chore: 作業終了時の自動コミット（2026-09-02 16:45）
+  → token.json.expired-20260814 に Google OAuth の access / refresh token
+```
+
+**迂回はしていない。** ローカルには4コミット（自動コミット2件＋今回の修正＋
+マージ）が積まれたまま。対応は本人の判断が要る:
+
+1. **まず該当の Google OAuth トークンを失効・再発行する**（履歴に残っており、
+   push 直前まで行っている）
+2. そのうえで履歴からファイルを落とす（`git filter-repo` 等）か、
+   GitHub の unblock URL で許可する
+3. `.gitignore` に `token.json*` を足す（現在は `token.json` のみ）
+
+### 6. `scripts/photos.py` — Wikimedia のサムネイルホストを許可（既存欠陥の修正）
 
 commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許可リストが
 `upload.wikimedia.org` だけだったため `download()` が `ValueError` を投げていた。
@@ -116,7 +162,7 @@ commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許�
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 584 passed**（`election` 15件・`photos` 3件・`frame_photo` 4件・
+- **`pytest` 585 passed**（`election` 15件・`photos` 3件・`frame_photo` 4件・
   `draw` 6件の追加後）。
 - **5本とも予約が通った。API で引き直して確認した**:
 
@@ -182,20 +228,23 @@ commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許�
    事故があれば `python scripts/unpublish.py vvpSRwF072M` で即座に戻せる。
 2. **写真を差し替えるか決める**（上記「未検証のもの」）。差し替えるなら
    9/3・9/4 のぶんは間に合う。
-3. **不要なら旧版3本（`vvpSRwF072M` / `yHT9_jXuvlY` / `BgIhdx43dSo`）を
+3. **`com.-youtube` の Google OAuth トークンを失効・再発行する**（上記）。
+   そのあとで履歴を掃除しないと、あのリポジトリは push できないままになる。
+
+4. **不要なら旧版3本（`vvpSRwF072M` / `yHT9_jXuvlY` / `BgIhdx43dSo`）を
    YouTube Studio から削除する。** 予約は外してあるので放置しても公開されない。
 
-4. **9/7 以降の枠は空。** 通常の題材に戻すなら従来どおり:
+5. **9/7 以降の枠は空。** 通常の題材に戻すなら従来どおり:
 
    ```bash
    python scripts/run_daily.py --keyword "<2語以上>" --script <台本.json> --days-ahead N --limit 1
    ```
 
    実測済みで未使用の検索語候補: `医師 偏在`、`外国人 土地`。
-5. **選挙が終わったら（9/13以降）`scripts/election.py` と
+6. **選挙が終わったら（9/13以降）`scripts/election.py` と
    `scripts/run_election.py` を消す。** 消せば元の1経路に戻る。
    テスト `tests/test_election.py` も一緒に消す。
-6. 維持率の確認（`python scripts/retention_report.py`）。選挙4本は
+7. 維持率の確認（`python scripts/retention_report.py`）。選挙4本は
    通常の題材と傾向が違うはずなので、平常の題材選びの判断材料に混ぜないこと。
 
 ## 触ってはいけないところ
