@@ -107,9 +107,8 @@ python scripts/frame_photo.py work/<id>   # そのあと build し直す
 
 ### 5. 同じ改行の修正を他リポジトリへ展開した
 
-`projects` 配下 41 リポジトリを調べ、日本語テロップの折り返しを持つのは
-4つだけだった（`textbbox` を使う他のスクリプトは短い見出しのみ）。
-同じ5文で測った結果:
+`projects` 配下 41 リポジトリを調べ、**自動で改行位置を決めているのは5つ**。
+同じ5文で測った結果（`bgm-youtube` はサムネの2行割りなので別基準）:
 
 | リポジトリ | 変更前（不自然/総数, 数値の分断） | 変更後 |
 |---|---|---|
@@ -117,6 +116,15 @@ python scripts/frame_photo.py work/<id>   # そのあと build し直す
 | tora-kirinuki | 11/13, 2 | 1/15, 0 |
 | hiroyuki-youtube | 7/14, 1 | 2/15, 0 |
 | com.-youtube | 2/14, 1 | 2/15, 0 |
+| bgm-youtube | サムネ2行割り。数値・カタカナを分断 | 分断 0 |
+
+**対象外と確認したもの**（実際に中を見た）:
+`NexeedLab/gen_header.py` `gen_carousel.py` は `text.split("
+")` で
+**改行を手書きで持っている**。`hiroyuki/thumbnail.py` の `main` も
+レシピJSONに手書きの配列。`amazon-affiliate` `com.-youtube/thumbnail.py`
+`tora-kirinuki/cards.py` `news-youtube/cards_wide.py` は自前で折らず、
+修正済みの `wrap()` を呼ぶだけ。
 
 - **tora-kirinuki**: `wrap()` が幅を見て1文字ずつ折るだけだったので、
   news-youtube と同じ実装（atom・切れ目の採点・括弧の深さ）を入れた。
@@ -128,6 +136,10 @@ python scripts/frame_photo.py work/<id>   # そのあと build し直す
 - **com.-youtube**: 文字種変化の採点まで持っていたが、「万」と「5」も
   文字種変化にあたるため**数値を優先して割っていた**。数値の内側を
   0点にした。`pytest 143 passed`。**push できていない（下記）。**
+- **bgm-youtube**: `build_video.wrap_lines()` は左右の幅が揃う位置を選ぶだけで、
+  「作業用BGM1」／「000万回再生」「深夜の3時」／「間ジャズ」「昼のス」／
+  「ウィング」と割れていた。数値＋単位とカタカナ語を候補から外した
+  （英語を空白でしか切らないのと同じ理由）。`pytest 212 passed`。**push 済み。**
 - **news-youtube**: 他リポジトリと突き合わせた結果、hiroyuki が既に
   解いていた「括弧の中では折らない」が無いと分かったので追加した。
   **予約済み5本のテロップ出力は変化なし**（比較して確認）。
