@@ -31,14 +31,22 @@
 from __future__ import annotations
 
 import html
+import io
 import re
 from dataclasses import dataclass
 
 import requests
+from pypdf import PdfReader
 
 from scripts.evidence import MIN_QUOTE_CHARS, Evidence, has_figure
 
-TIMEOUT = 20
+TIMEOUT = 30
+# 公約PDFは実測 7.7MB。取り違えて巨大なファイルを掴まないための上限。
+MAX_BYTES = 40 * 1024 * 1024
+# テキスト層の無いPDF（画像だけのスキャン）は逐語照合ができない。
+# 照合できないものを「一次資料」として通すと、この経路の唯一の関門が
+# 無効になるので、短すぎる抽出結果は失敗として扱う。
+MIN_PDF_CHARS = 500
 
 
 class UnknownCandidate(ValueError):
@@ -47,6 +55,10 @@ class UnknownCandidate(ValueError):
 
 class QuoteNotFound(ValueError):
     """引用が公約ページに逐語で見つからない。"""
+
+
+class SourceUnreadable(RuntimeError):
+    """一次資料からテキストを取り出せない（PDFにテキスト層が無い等）。"""
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,23 @@ MANIFESTO_SOURCES: dict[str, ManifestoSource] = {
         person="玉城デニー",
         context="玉城デニー 2026年政策",
     ),
+    # 各候補が公開している政策集（PDF）。要約ページより踏み込んだ記述が要る
+    # ときに使う。**両候補ぶんを対で入れてある**——片方の候補についてだけ
+    # 詳しい資料が使える状態にすると、深掘りが常に一方に偏る。
+    "koja-detail": ManifestoSource(
+        url="https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/"
+            "img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80"
+            "%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
+        person="古謝玄太",
+        context="古謝玄太「沖縄を前に進める120の政策」",
+    ),
+    "tamaki-detail": ManifestoSource(
+        url="https://tamakidenny.com/wp2/wp-content/uploads/2026/08/"
+            "2026%E7%8E%89%E5%9F%8E%E3%83%87%E3%83%8B%E3%83%BC%E7%9F%A5%E4%BA"
+            "%8B%E9%81%B8%E6%94%BF%E7%AD%96%E9%9B%86.pdf",
+        person="玉城デニー",
+        context="玉城デニー 知事選政策集",
+    ),
 }
 
 _TAG_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>",
@@ -89,11 +118,34 @@ def _squeeze(text: str) -> str:
     return _WS_RE.sub("", text.replace("\u3000", " "))
 
 
+def _pdf_text(blob: bytes) -> str:
+    """PDF のテキスト層を取り出す。
+
+    画像だけのPDFでは空に近い文字列が返る。それを黙って通すと、
+    逐語照合が「何とも一致しない」ではなく「照合対象が無い」状態になり、
+    関門として働かなくなる。短すぎたら失敗として送出する。
+    """
+    pages = PdfReader(io.BytesIO(blob)).pages
+    text = "\n".join((p.extract_text() or "") for p in pages)
+    if len(text.strip()) < MIN_PDF_CHARS:
+        raise SourceUnreadable(
+            f"PDFからテキストを取り出せませんでした（{len(text.strip())}字）。"
+            "画像だけのPDFは逐語照合ができないので一次資料に使えません")
+    return text
+
+
 def _fetch(url: str) -> str:
-    """公約ページの本文テキストを取る。テストはここを差し替える。"""
+    """公約ページ／政策集の本文テキストを取る。テストはここを差し替える。"""
     r = requests.get(url, timeout=TIMEOUT,
                      headers={"User-Agent": "news-youtube/1.0"})
     r.raise_for_status()
+    blob = r.content
+    if len(blob) > MAX_BYTES:
+        raise SourceUnreadable(
+            f"一次資料が大きすぎます: {len(blob)} > {MAX_BYTES}（{url}）")
+    ctype = r.headers.get("content-type", "").lower()
+    if "application/pdf" in ctype or url.lower().endswith(".pdf"):
+        return _pdf_text(blob)
     return _strip_html(r.text)
 
 

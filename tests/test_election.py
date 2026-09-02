@@ -25,9 +25,19 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(election, "_fetch", lambda url: PAGE)
 
 
-def test_許可リストは両候補の公約ページを持つ():
+def test_許可リストは両候補を同じ数だけ持つ():
     # 片方だけになっていたら、この経路は一方の候補の宣伝装置になる。
-    assert set(election.MANIFESTO_SOURCES) == {KOJA, TAMAKI}
+    # 「要約ページは両方あるが、詳しい政策集は片方だけ」も同じことなので、
+    # 候補ごとの**件数が揃っている**ことまで縛る。
+    from collections import Counter
+    per_person = Counter(s.person for s in election.MANIFESTO_SOURCES.values())
+    assert len(per_person) == 2, "両候補ぶん揃っていない"
+    assert len(set(per_person.values())) == 1, f"候補ごとの資料数が不揃い: {per_person}"
+
+
+def test_要約ページと政策集が両候補ぶんある():
+    assert {KOJA, TAMAKI, "koja-detail", "tamaki-detail"} <= set(
+        election.MANIFESTO_SOURCES)
 
 
 def test_許可リストに無い候補は通さない():
@@ -86,3 +96,23 @@ def test_空白のゆれは吸収するが文字は落とさない():
     # ただし文字そのものが違うものは通さない（上の QuoteNotFound で担保）。
     ev = election.collect(KOJA, "県民所得231.5万円 を 500万円にふやす")
     assert ev.quote  # 空白を詰めれば一致する
+
+
+# --- PDF の政策集 ---------------------------------------------------------
+
+def test_テキスト層の無いPDFは一次資料に使わない():
+    # 画像だけのPDFを通すと、逐語照合が「一致しない」ではなく
+    # 「照合対象が無い」状態になり、この経路唯一の関門が無効になる。
+    import io
+    from pypdf import PdfWriter
+    w = PdfWriter()
+    w.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    w.write(buf)
+    with pytest.raises(election.SourceUnreadable):
+        election._pdf_text(buf.getvalue())
+
+
+def test_政策集のURLはPDFを指している():
+    for key in ("koja-detail", "tamaki-detail"):
+        assert election.MANIFESTO_SOURCES[key].url.lower().endswith(".pdf")
