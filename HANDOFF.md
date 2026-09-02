@@ -2,7 +2,8 @@
 
 最終更新: 2026-09-02（セッション: 沖縄県知事選の**5本**を作って予約。選挙用の別経路
 `run_election.py` を新設。公約PDFにも対応。Wikimedia のサムネイルホストの
-取りこぼしと、タイトな顔写真が切れる問題を修正）
+取りこぼし、タイトな顔写真が切れる問題、テロップが語の途中で改行される
+問題を修正）
 
 ## いま何をしているのか
 
@@ -19,16 +20,24 @@
 
 | 公開予定（JST） | video id | 題材 |
 |---|---|---|
-| 09-02 18:30 | -K_GQlJ4oR0 | 古謝氏の公約（三つの倍増・辺野古容認） |
-| 09-03 18:30 | wL43dLccqLg | 玉城氏の政策（7つの柱・鉄軌道） |
-| 09-04 18:30 | phur61vle8A | 古謝氏の「三つの倍増」を数字で確かめる |
-| 09-05 18:30 | LOYwJw6tBUo | 古謝氏の政策集120項目を読む（深掘り） |
-| 09-06 18:30 | BKwnK8HFczE | 玉城氏の政策264項目を読む（深掘り） |
+| 09-02 18:30 | s0H-HHUiUfI | 古謝氏の公約（三つの倍増・辺野古容認） |
+| 09-03 18:30 | VqhHb3TfAgg | 玉城氏の政策（7つの柱・鉄軌道） |
+| 09-04 18:30 | Ut919N6NctI | 古謝氏の「三つの倍増」を数字で確かめる |
+| 09-05 18:30 | TXa3-6tCvkk | 古謝氏の政策集120項目を読む（深掘り） |
+| 09-06 18:30 | L2hB5naZk5o | 玉城氏の政策264項目を読む（深掘り） |
 
-**古謝氏の3本は写真の切れを直して差し替えた。** 旧版
-`vvpSRwF072M` / `yHT9_jXuvlY` / `BgIhdx43dSo` は**予約を解除して非公開のまま
-チャンネルに残っている**（削除はしていない）。不要なら YouTube Studio から
-手で消すこと。`state/published.json` は新しい ID に更新済み。
+### 予約を解除して残してある旧版（削除していない）
+
+写真の切れとテロップの改行を直すたびに作り直したため、**非公開・予約なし**の
+動画が8本チャンネルに残っている。`publishAt=None` を確認済みなので放置しても
+公開されないが、不要なら YouTube Studio から手で消すこと。
+
+```
+写真の切れで差し替え: vvpSRwF072M  yHT9_jXuvlY  BgIhdx43dSo
+改行の修正で差し替え: -K_GQlJ4oR0  wL43dLccqLg  phur61vle8A  LOYwJw6tBUo  BKwnK8HFczE
+```
+
+`state/published.json` は常に最新の ID を指している。
 
 ## 今回やったこと
 
@@ -78,7 +87,25 @@ python scripts/frame_photo.py work/<id>   # そのあと build し直す
 
 テスト `tests/test_frame_photo.py` 4件。
 
-### 4. `scripts/photos.py` — Wikimedia のサムネイルホストを許可（既存欠陥の修正）
+### 4. `scripts/draw.py` — テロップが語の途中で改行される問題（既存欠陥の修正）
+
+`wrap()` は幅だけを見て折り返しており、**実測158か所のうち36%が語の途中**で
+割れていた（「してい」／「る」、「辺野古移」／「設」、「231万」／「5000円」、
+見出しの「県民所得を500万」／「円に」）。数字が行をまたぐと別の額に読める。
+
+直した点は2つ:
+
+1. **数値は単位までひとかたまり**にする（`_ATOM_RE`）。
+   「1兆747億円」「231万5000円」「67パーセント」が割れない。
+2. **幅で決まった位置が語の途中なら、自然な切れ目まで戻して切る**
+   （`_choose_break` / `_break_score`）。優先度は
+   句読点の直後 > かっこの直前 > 助詞の直後 > ひらがな→漢字の変わり目。
+   戻しすぎて短い行ができないよう `_BACKTRACK_RATIO = 0.6` で下限を切る。
+
+**不自然な改行は 57/158（36%）→ 8/158（5%）。** はみ出しは0のまま。
+テスト `tests/test_draw.py` に6件追加。
+
+### 5. `scripts/photos.py` — Wikimedia のサムネイルホストを許可（既存欠陥の修正）
 
 commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許可リストが
 `upload.wikimedia.org` だけだったため `download()` が `ValueError` を投げていた。
@@ -89,18 +116,21 @@ commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許�
 
 ## 検証済みの事実（実際に画面に出した出力）
 
-- **`pytest` 578 passed**（`election` 15件・`photos` 3件・`frame_photo` 4件の追加後）。
+- **`pytest` 584 passed**（`election` 15件・`photos` 3件・`frame_photo` 4件・
+  `draw` 6件の追加後）。
 - **5本とも予約が通った。API で引き直して確認した**:
 
   ```
-  -K_GQlJ4oR0 PT59S private 2026-09-02T09:30:00Z （= 9/2 18:30 JST）
-  wL43dLccqLg PT59S private 2026-09-03T09:30:00Z （= 9/3 18:30 JST）
-  phur61vle8A PT59S private 2026-09-04T09:30:00Z （= 9/4 18:30 JST）
-  LOYwJw6tBUo PT59S private 2026-09-05T09:30:00Z （= 9/5 18:30 JST）
-  BKwnK8HFczE PT59S private 2026-09-06T09:30:00Z （= 9/6 18:30 JST）
+  s0H-HHUiUfI PT59S private 2026-09-02T09:30:00Z （= 9/2 18:30 JST）
+  VqhHb3TfAgg PT59S private 2026-09-03T09:30:00Z （= 9/3 18:30 JST）
+  Ut919N6NctI PT59S private 2026-09-04T09:30:00Z （= 9/4 18:30 JST）
+  TXa3-6tCvkk PT59S private 2026-09-05T09:30:00Z （= 9/5 18:30 JST）
+  L2hB5naZk5o PT59S private 2026-09-06T09:30:00Z （= 9/6 18:30 JST）
   ```
 
-  旧版3本は `publishAt=None`（予約解除済み）を確認した。
+  旧版8本は `publishAt=None`（予約解除済み）を確認した。
+- **改行の改善を数えて確認した**: 5本のナレーション158か所の改行のうち、
+  語の途中で割れているものが 57 → 8 に減った。
 - **尺は5本とも 58.34〜58.63秒**（voice.wav と video.mp4 の差 +0.03秒以内）。
 - **テロップのはみ出しは5本とも0**（`check_telop.py` で全行の描画幅を測定）。
   字数は 349 / 341 / 344 / 343 / 352。
@@ -180,6 +210,9 @@ commons の imageinfo が `thumb.wikimedia.org` を返すことがあり、許�
   無効になる。玉城氏の政策集PDFで実際に踏んだ。
 - **`build_short._fill` を「切り取らない」方式に変えない。** 余白のある素材の
   構図まで変わる。顔が切れるのは素材側の問題なので `frame_photo.py` で直す。
+- **`draw._BACKTRACK_RATIO` を下げすぎない。** 戻せる幅を広げるほど自然な
+  切れ目は見つかるが、1行だけ極端に短い段差ができて逆に読みにくくなる。
+  0.6 は実測（158か所）で決めた値。
 - **`election.collect` の逐語照合を緩めない。** これがこの経路唯一の関門。
 - 台本ファイルの `source_url` 必須をやめない。`source_quote` も同様。
 - **台本を書いたら `check_telop.py` で幅を測ってからビルドする。**

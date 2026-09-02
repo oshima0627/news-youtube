@@ -189,28 +189,94 @@ _NO_LINE_START = "、。，．！？」』）］｝〉》”’ー・"
 
 # 英数字の連なりは途中で折り返さない。1文字ずつ送ると「G7」が
 # 「G」／「7」に割れ、「10%」が「1」／「0%」に割れる（実際に起きた）。
-_ATOM_RE = re.compile(r"[0-9A-Za-z]+[%％]?|.", re.S)
+#
+# 数値は**単位まで含めて**ひとかたまりにする。幅だけで切っていた頃は
+# 「231万5000円」が「231万」／「5000円」に、「1兆747億円」が「1兆747」／
+# 「億円」に割れており、行をまたいだ数字が別の額に読めていた。
+_NUM = r"[0-9A-Za-z][0-9A-Za-z.,]*"
+_UNIT = (r"パーセント|ポイント|項目|時間|キロ|メートル|トン|ドル|"
+         r"[%％万億兆円年月日人名件回倍割歳個台本社校票席分秒]")
+_ATOM_RE = re.compile(rf"(?:{_NUM}(?:{_UNIT})*)+|.", re.S)
+
+# 改行してよい場所の優先度。日本語は単語境界が無いので、幅だけで切ると
+# 「してい」／「る」や「辺野古移」／「設」のように語の途中で割れる。
+# 幅の許す範囲でいちばん後ろの「自然な切れ目」まで戻してから改行する。
+_BREAK_AFTER = "、。，．！？」』）］｝〉》"      # この文字の直後で切る
+_BREAK_BEFORE = "「『（［｛〈《"                # この文字の直前で切る
+_PARTICLES = "はがをにへとでもやのかねよ"       # 助詞の直後も自然
+
+# 切れ目を探して戻れる範囲。これ以上戻ると行が短くなりすぎて、
+# かえって読みにくい（1行だけ極端に短い段差ができる）。
+_BACKTRACK_RATIO = 0.6
+
+
+_HIRAGANA = re.compile(r"[ぁ-ゟ]")
+
+
+def _break_score(atoms: list[str], j: int) -> int:
+    """atoms[:j] で改行したときの自然さ。大きいほど良い、0 なら語の途中。"""
+    prev, nxt = atoms[j - 1], atoms[j]
+    if prev[-1] in _BREAK_AFTER:
+        return 4
+    if nxt[0] in _BREAK_BEFORE:
+        return 3
+    if len(prev) == 1 and prev in _PARTICLES:
+        return 2
+    # ひらがな → 漢字・カタカナ の変わり目は語の切れ目であることが多い
+    # （助詞や活用語尾の直後に次の語が始まる）。逆にひらがなが続く所や、
+    # 漢字のあとにひらがなが続く所（送りがな）は語の途中である公算が高い。
+    if _HIRAGANA.match(prev[-1]) and not _HIRAGANA.match(nxt[0]):
+        return 1
+    return 0
+
+
+def _choose_break(atoms: list[str], start: int, n: int) -> int:
+    """幅で決まった位置 n から、自然な切れ目まで戻した位置を返す。
+
+    戻れる下限は行の長さ（n - start）に対する割合で決める。絶対位置で
+    見ると、行が進むほど戻せる幅が広がってしまう。
+    """
+    floor = start + max(1, int((n - start) * _BACKTRACK_RATIO))
+    best, best_score = n, 0
+    for j in range(n, floor - 1, -1):
+        if j >= len(atoms) or j <= start:
+            continue
+        score = _break_score(atoms, j)
+        if score > best_score:            # 同点なら後ろ（行が長いほう）を採る
+            best, best_score = j, score
+    return best
 
 
 def wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
          max_w: int) -> list[str]:
-    """日本語は単語境界が無いので、幅を見て折り返す。
+    """日本語は単語境界が無いので、幅と切れ目の自然さを見て折り返す。
 
-    英数字の連なりは1かたまりとして扱い、途中では切らない。
+    英数字と数値＋単位は1かたまりとして扱い、途中では切らない。
+    幅で決まった位置が語の途中なら、句読点・かっこ・助詞の切れ目まで
+    戻してから改行する（戻しすぎて行が短くなるのは `_BACKTRACK_RATIO` で防ぐ）。
     行頭に来てはいけない文字は前の行に残す（禁則処理）。幅を少し
     超えることになるが、「。」だけの行を作るよりは収まりがよい。
     """
     text = normalize_newlines(text)
-    lines, cur = [], ""
-    for atom in _ATOM_RE.findall(text):
-        b = draw.textbbox((0, 0), cur + atom, font=font)
-        if b[2] - b[0] > max_w and cur and atom not in _NO_LINE_START:
-            lines.append(cur)
-            cur = atom
-        else:
-            cur += atom
-    if cur:
-        lines.append(cur)
+    atoms = _ATOM_RE.findall(text)
+    lines, start = [], 0
+    while start < len(atoms):
+        n = start
+        while n < len(atoms):
+            cand = "".join(atoms[start:n + 1])
+            b = draw.textbbox((0, 0), cand, font=font)
+            if b[2] - b[0] > max_w and n > start \
+                    and atoms[n] not in _NO_LINE_START:
+                break
+            n += 1
+        if n >= len(atoms):
+            lines.append("".join(atoms[start:]))
+            break
+        # n は「入りきらなかった最初の atom」の位置＝幅で決まる改行位置
+        cut = _choose_break(atoms, start, n) if n - start > 1 else n
+        cut = max(cut, start + 1)          # 1行に最低1 atom は入れる
+        lines.append("".join(atoms[start:cut]))
+        start = cut
     return lines
 
 

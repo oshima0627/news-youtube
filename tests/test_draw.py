@@ -181,3 +181,55 @@ def test_パーセントも数字から離れない():
     got = wrap(d, head + "10%です", font, width)
 
     assert "10%" in got[1]
+
+
+# --- 改行位置の自然さ -----------------------------------------------------
+# 幅だけで折り返していた頃は、実測158か所のうち36%が語の途中で割れていた
+# （「してい」／「る」、「辺野古移」／「設」、「231万」／「5000円」）。
+# 数値＋単位をひとかたまりにし、句読点・かっこ・助詞・ひらがな→漢字の
+# 変わり目まで戻して切るようにして5%まで下げた。
+
+def _wrap(text: str, max_w: int) -> list[str]:
+    from PIL import Image, ImageDraw
+    from scripts.draw import pick_font, wrap
+    d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    return wrap(d, text, pick_font(66), max_w)
+
+
+def test_数値と単位は行をまたがない():
+    # 「231万」／「5000円」に割れると、行をまたいだ数字が別の額に読める。
+    for text in ["ひとりあたり県民所得231万5000円をふやします",
+                 "観光収入1兆747億円を2兆円にふやすとしています"]:
+        for line in _wrap(text, 700):
+            assert not line.endswith(("231万", "1兆747", "552", "1兆")), line
+
+
+def test_句読点の直後で切る():
+    lines = _wrap("二つ目は子育て。沖縄県こども未来部の予算を見ます。", 620)
+    assert lines[0].endswith("。")
+
+
+def test_助詞やひらがなの直後で切り語の途中では切らない():
+    lines = _wrap("沖縄県知事選挙に立候補している古謝玄太氏の政策です。", 620)
+    # 「立候補してい」／「る」のような割れ方をしない
+    assert not lines[0].endswith("してい")
+    assert not lines[1].startswith("る")
+
+
+def test_戻しすぎて極端に短い行を作らない():
+    text = "沖縄県知事選挙に立候補している候補者の政策をここで詳しく読みます。"
+    lines = _wrap(text, 700)
+    longest = max(len(x) for x in lines)
+    for line in lines[:-1]:                 # 最終行は余りなので除く
+        assert len(line) >= longest * 0.5, (line, lines)
+
+
+def test_英数字の連なりは従来どおり割れない():
+    for line in _wrap("G7の食料品税率は10%でした", 200):
+        assert line not in ("G", "7", "1", "0%")
+
+
+def test_行頭禁則は維持される():
+    from scripts.draw import _NO_LINE_START
+    for line in _wrap("これは試験です。次の文もあります。さらに続きます。", 300)[1:]:
+        assert line[0] not in _NO_LINE_START, line
