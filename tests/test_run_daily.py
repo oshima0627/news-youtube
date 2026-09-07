@@ -69,6 +69,8 @@ def _evidence_for(keyword: str) -> Evidence:
 def _script(title: str = "テストタイトル", quote_excerpt: str = "十二文字以上ある逐語引用") -> Script:
     return Script(
         title=title,
+        title_en="Test title in English",
+        summary_en="An English summary of the same content, with the same numbers.",
         headline="見出し",
         narration="ナレーション本文。" * 10,
         subtitle="字幕に出す要点",
@@ -1631,6 +1633,8 @@ def _hand_written(tmp_path: Path, keyword: str, **overrides) -> Path:
     data = {
         "source_url": _evidence_for(keyword).source_url,
         "title": "人が書いたタイトル",
+        "title_en": "A title written by a person",
+        "summary_en": "An English summary written by a person.",
         "headline": "見出し",
         "narration": "人が書いたナレーション。" * 10,
         "subtitle": "字幕に出す要点",

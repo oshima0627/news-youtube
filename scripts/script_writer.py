@@ -99,6 +99,19 @@ NARRATION_SPAN = f"{NARRATION_MIN_CHARS}〜{NARRATION_MAX_CHARS}字"
 
 class Script(BaseModel):
     title: str = Field(description="YouTubeのタイトル。60文字以内。ハッシュタグは含めない")
+    # YouTube の画面に出る文字列は英語にする（2026-09-07 のオーナー決定）。
+    # 音声・テロップ・引用カードは日本語のままなので、**日本語の title /
+    # narration を消さずに英語の項目を足す**形にしてある。消すと、
+    # 台本を書く側が英語で書き、画面には日本語が出る、という食い違いを
+    # 検証する手段が無くなる。
+    #
+    # 必須項目にしてあるのは、全経路（モデル生成の write と、人が書いた
+    # 台本を読む load_script）が同じ1つの検証を通るようにするため。
+    # 片方だけ任意にすると、渡し忘れた経路が日本語のまま公開される。
+    title_en: str = Field(description="YouTubeのタイトル（英語）。100文字以内")
+    summary_en: str = Field(
+        description="YouTubeの説明文の本文（英語）。ナレーションと同じ内容を、"
+                    "数字を1つも変えずに英語で書く")
     headline: str = Field(description="画面上部に出す見出し。20文字以内")
     narration: str = Field(description=f"読み上げる本文。{NARRATION_SPAN}")
     subtitle: str = Field(
@@ -113,6 +126,36 @@ class Script(BaseModel):
     figure_label: str = Field(description="数値カードの見出し。10文字以内")
     figure_value: str = Field(description="数値カードに大きく出す値。12文字以内")
     tags: list[str] = Field(description="YouTubeのタグ。3〜6個")
+
+
+# ── YouTube の説明文 ────────────────────────────────────────────
+#
+# 本文は英語にするが、**出典の引用は原文の日本語をそのまま残す**。
+# 会議名や人名を英訳した文字列に差し替えると、読みを推測した誤りが
+# 出典に入り、しかも元の表記が消えるので確かめようがなくなる。
+# ラベル（Source / Image）だけ英語にする。
+#
+# 会議名の対訳表をここに持たないのは、表に無い委員会が出た日に
+# 説明文の生成が落ちる形にしたくないため（0本の日を増やす方が痛い）。
+
+_IMAGE_LABEL_JA = "画像: "
+
+
+def english_description(summary_en: str, context: str, source_url: str,
+                        attribution: str, extra_lines: list[str] | None = None) -> str:
+    """YouTube の説明文を組み立てる。**全経路がこの関数を通ること。**
+
+    呼び出し側で組み立てると、run_daily と run_election で
+    ラベルの英語化が食い違う（片方だけ日本語のまま公開される）。
+    """
+    credit = attribution
+    if credit.startswith(_IMAGE_LABEL_JA):
+        credit = "Image: " + credit[len(_IMAGE_LABEL_JA):]
+    lines = [summary_en, "", f"Source: {context}", source_url]
+    if extra_lines:
+        lines += ["", *extra_lines]
+    lines += ["", credit]
+    return "\n".join(lines) + "\n"
 
 
 # ── 長尺のパート ────────────────────────────────────────────────
@@ -252,6 +295,11 @@ def build_prompt(recipe: dict) -> str:
         "書いてください。",
         "subtitle には、字幕バンドに出す要点を40文字以内で書いてください"
         "（ナレーション全文ではありません）。",
+        "title_en には、title と同じ内容の英語のタイトルを100文字以内で"
+        "書いてください。",
+        "summary_en には、ナレーションと同じ内容を英語で書いてください。"
+        "**数字・固有名詞・日付を1つも変えないこと。** 日本語に無いことを"
+        "足さないでください。",
     ]
     if ev.get("quote"):
         # 画面に出るのはこの一節そのもの（引用カード）。言い換えると、

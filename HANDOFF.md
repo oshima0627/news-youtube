@@ -1,12 +1,18 @@
 # HANDOFF
 
 最終更新: 2026-09-07（セッション: **アナリティクスの調査 → 次の題材の洗い出し →
-ショート1本を作って 9/8 07:30 に予約**。調査中に見つけたものを `docs/` 3件に記録した）
+ショート1本を作って 9/8 07:30 に予約 → YouTube のタイトルと説明を英語に切り替え**。
+調査中に見つけたものを `docs/` 3件に記録した）
 
 ## いま何をしているのか
 
-**相続税の題材でショート1本を作り、9/8 07:30 JST の枠に予約した**（`My5mRImj744`）。
-9/3 以降ずっと空いていた 07:30 の枠を、この1本で埋めたところ。
+**YouTube に出るタイトルと説明文を英語に切り替えた**（オーナーの決定）。
+公開済み・予約済みのショート **57本を書き換え済み**で、パイプライン側も
+これから作るぶんが英語で出るように直してある。**画面のテロップ・引用カード・
+音声は日本語のまま。**
+
+その前に、相続税の題材でショート1本を作り 9/8 07:30 JST の枠に予約した
+（`My5mRImj744`）。
 
 制作パイプラインは止まっていない。沖縄県知事選の動画が 9/11 まで 18:30 枠に
 予約済みで、9/2〜9/6 の5本は公開されて再生も付いている。
@@ -44,7 +50,10 @@ main に無かったもの）、`run_election.py` の修正、`tests/test_electi
 | 09-07〜09-11 18:30 | RhOoYz4TrpE / OfJk7NWKXTU / mxfqaTDzAYw / Md3w6Qaqx5Y / R3SZbpIoI5U | private・予約済み | — |
 | **09-08 07:30** | **My5mRImj744**（相続税） | private・予約済み | — |
 
-**07:30 の枠は 9/3〜9/7 が空のまま**（1日2本 → 1本だった）。9/8 の 07:30 だけ今回埋めた。
+**07:30 の枠が空だったのは 9/3・9/4・9/7 の3日**。9/5 と 9/6 の 07:30 は選挙動画
+（`nhEm9sGFMuw` / `w0UTt2LJc3s`）で埋まっている — **このブランチの
+`published.json` に無いので、前半の作業では空だと誤認していた**（下記 ⚠ の実害）。
+9/8 の 07:30 は今回の相続税で埋めた。
 予約を外した旧版が8本、非公開のまま残っている（`publishAt=None` 確認済み）:
 `vvpSRwF072M yHT9_jXuvlY BgIhdx43dSo -K_GQlJ4oR0 wL43dLccqLg phur61vle8A LOYwJw6tBUo BKwnK8HFczE`
 
@@ -55,14 +64,32 @@ main に無かったもの）、`run_election.py` の修正、`tests/test_electi
 3. **`docs/topic-candidates-2026-09-07.md`（新規）** — 候補の検索語32語を採用ゲートに
    実際に当て、引用を読んで選び直した題材8件。
 4. **`work/scripts/souzokuzei.json`（新規）** — 相続税の台本（346字）。
-5. **`work/362e0055aeef/`** — 上の台本でビルドしたショート1本（**未投稿**）。
+5. **`work/362e0055aeef/`** — 上の台本で作ったショート1本。
+   **`My5mRImj744` として 9/8 07:30 JST に予約済み。**
    `recipes/362e0055aeef.json` も書き出されている。
 
 ```bash
-# 実行したコマンド（--dry-run 付き＝アップロードしない）
+# 実行したコマンド（--dry-run で確認 → 外して本番）
 python scripts/run_daily.py --keyword "相続税 基礎控除" \
-    --script work/scripts/souzokuzei.json --days-ahead 1 --limit 1 --dry-run
+    --script work/scripts/souzokuzei.json --days-ahead 1 --limit 1
 ```
+
+6. **英語化（YouTube のタイトルと説明文）** — オーナーの決定で、
+   YouTube に出る文字列だけを英語にした。**画面のテロップ・引用カード・音声は
+   日本語のまま。**
+   - 公開済み・予約済みのショート **57本**を `videos.update` で書き換えた。
+     本文は英訳、**出典の引用は原文の日本語をそのまま残し**、ラベルだけ
+     `Source:` / `Image:` にした。**理由**: 人名の読みを推測して英訳すると、
+     確かめようのない誤りが出典に入る（実際 `塩入清香` は「しおいり さや」で
+     字面からは読めない）。ライセンス表示と選挙の両候補併記は1行も落としていない。
+   - `scripts/script_writer.py` の `Script` に **`title_en` / `summary_en` を
+     必須項目として追加**。モデル生成（`write`）と人が書いた台本（`load_script`）の
+     **両経路が同じ1つの検証を通る**。片方だけ任意にすると、渡し忘れた経路が
+     日本語のまま公開される。
+   - 説明文の組み立ては `script_writer.english_description` に寄せた。
+     `run_daily.py` と `run_election.py` の**両方がこの1つの関数を呼ぶ**。
+   - **会議名の対訳表は持たせていない。** 表に無い委員会が出た日に説明文の生成が
+     落ちる形にすると、0本の日が増える。
 
 ## 検証済みの事実（実際に画面に出した出力）
 
@@ -122,6 +149,9 @@ python scripts/run_daily.py --keyword "相続税 基礎控除" \
 
 ## 未検証のもの
 
+- **英語化していないものが残っている。** 2025-09〜2025-12 の**旧形式のショート
+  約154本**（`㊗️1000回再生！【…】` の形。いまのパイプラインより前に作ったもの）と、
+  予約を外した重複の非公開8本は手を付けていない。**旧154本をやるかは未確認。**
 - **`My5mRImj744` が実際に 9/8 07:30 に公開されるかは未確認**（予約が
   入っていることだけ確認した）。事故があれば
   `python scripts/unpublish.py My5mRImj744` で即座に戻せる。
@@ -137,29 +167,28 @@ python scripts/run_daily.py --keyword "相続税 基礎控除" \
 
 ## 次にやること
 
-1. **投稿するか決める。** するならこれだけ:
-
-   ```bash
-   python scripts/run_daily.py --keyword "相続税 基礎控除" \
-       --script work/scripts/souzokuzei.json --days-ahead 1 --limit 1
-   ```
-
-   事故があれば `python scripts/unpublish.py <video_id>` で即座に戻せる。
-2. **`claude/okinawa-governor-election-videos-d1ebd9` を統合する**（上記 ⚠）。
+1. **旧形式のショート約154本も英語にするか決める。** 2025-09〜2025-12 に作った
+   `㊗️1000回再生！【…】` の形の動画で、いまのパイプラインより前のもの。
+   **未着手。** 手順は今回と同じ（現行メタデータを控える → 英訳 → `videos.update`
+   → 引き直して確認）。
+2. **9/7 18:30 の `RhOoYz4TrpE` と 9/8 07:30 の `My5mRImj744` が、英語タイトルの
+   まま公開されたか見る。** 英語化してから最初に公開される2本。事故があれば
+   `python scripts/unpublish.py <video_id>` で即座に戻せる。
+3. **`claude/okinawa-governor-election-videos-d1ebd9` を統合する**（上記 ⚠）。
    `check_telop.py` もそこにある。統合しないと `published.json` が分かれたままで、
    同じ枠を二重に予約する。
-3. **出典キャプションの改行を直す。** 57件中25件で人名が割れている。
+4. **出典キャプションの改行を直す。** 57件中25件で人名が割れている。
    直したら**同じ57件を再描画して件数を数える**。
-4. **`retention_report.py` に日別合計との突き合わせを入れる**（known-issues 15番）。
+5. **`retention_report.py` に日別合計との突き合わせを入れる**（known-issues 15番）。
    **入れるまで、このCLIの出力を判断に使わない。**
-5. **07:30 の枠を継続して埋める。** 題材の候補と引用・出典URLは
+6. **07:30 の枠を継続して埋める。** 題材の候補と引用・出典URLは
    `docs/topic-candidates-2026-09-07.md` に8件そろえてある。次は
    `復興特別所得税 防衛` / `ガソリン 補助金`。
-6. **`published.json` から `2D_cpARVcw0` のエントリを外す**（known-issues 8番の
+7. **`published.json` から `2D_cpARVcw0` のエントリを外す**（known-issues 8番の
    例外にあたる唯一のケース）。**それ以外の手編集はしない。**
-7. **選挙が終わったら（9/13以降）`scripts/election.py` と `scripts/run_election.py`、
+8. **選挙が終わったら（9/13以降）`scripts/election.py` と `scripts/run_election.py`、
    `tests/test_election.py` を消す。**
-8. `com.-youtube` の Google OAuth トークンを失効・再発行する（持ち越し。履歴に
+9. `com.-youtube` の Google OAuth トークンを失効・再発行する（持ち越し。履歴に
    トークンが残っていて Push Protection に止められている。**迂回はしていない**）。
 
 ## 触ってはいけないところ
@@ -177,6 +206,13 @@ python scripts/run_daily.py --keyword "相続税 基礎控除" \
 - **`build_short._fill` を「切り取らない」方式に変えない。** 顔が切れるのは素材側の
   問題なので `frame_photo.py` で直す。
 - **`draw._BACKTRACK_RATIO` を下げすぎない。** 0.6 は実測158か所で決めた値。
+- **英語化を画面（テロップ・引用カード）と音声に広げない。** 英語にしたのは
+  YouTube のタイトルと説明文だけ。画面まで英語にすると、引用カードの文字列が
+  一次資料と一致しなくなり、`ensure_grounded_card` の検証が成立しない。
+- **`script_writer.english_description` に会議名の対訳表を足さない。**
+  表に無い委員会が出た日に説明文の生成が落ちる。出典は原文のまま残す。
+- **`title_en` / `summary_en` を任意項目に戻さない。** 渡し忘れた経路が
+  日本語のまま公開される（`run_daily` と `run_election` の両方が通る唯一の関門）。
 - 台本ファイルの `source_url` / `source_quote` 必須をやめない。
 - `state/*.json` を手で編集しない（上記6番の1件を除く）。
 - **9/13（投票日当日）に選挙関連の投稿・更新をしない**（公職選挙法129条）。

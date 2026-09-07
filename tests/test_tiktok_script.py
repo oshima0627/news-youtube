@@ -26,6 +26,8 @@ def _script(narration_chars=430, **over):
     data = {
         "source_url": SOURCE,
         "title": "出生数67万人・出生率1.14 国会で示された「二つの少子化対策」",
+        "title_en": "670,000 births and a fertility rate of 1.14",
+        "summary_en": "An English summary with the same numbers.",
         "headline": "出生数67万人",
         "narration": "あ" * narration_chars,
         "subtitle": "過去最低を更新し続けている",

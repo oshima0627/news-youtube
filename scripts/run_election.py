@@ -40,7 +40,8 @@ from scripts.evidence import build_recipe                       # noqa: E402
 from scripts.narrate import synthesize                          # noqa: E402
 from scripts.run_daily import (CHANNEL_ID, JST, ensure_grounded_card,  # noqa: E402
                                ensure_photo, taken_slots)
-from scripts.script_writer import ScriptMismatch, load_script    # noqa: E402
+from scripts.script_writer import (ScriptMismatch,               # noqa: E402
+                                   english_description, load_script)
 
 WORK = ROOT / "work"
 RECIPES = ROOT / "recipes"
@@ -76,7 +77,7 @@ def write_meta(workdir: Path, script, license_: dict, ev) -> None:
     """
     (workdir / "meta.json").write_text(json.dumps({
         "id": workdir.name,
-        "title": script.title[:100],
+        "title": script.title_en[:100],
         "tags": script.tags,
         "category_id": "25",
         "expected_channel_id": CHANNEL_ID,
@@ -84,22 +85,20 @@ def write_meta(workdir: Path, script, license_: dict, ev) -> None:
         "source_url": ev.source_url,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    others = "\n".join(
-        f"・{s.person}: {s.url}"
-        for s in election.MANIFESTO_SOURCES.values())
-    (workdir / "description.txt").write_text("\n".join([
-        script.narration,
-        "",
-        f"根拠: {ev.context}",
-        ev.source_url,
-        "",
-        "2026年沖縄県知事選挙（2026年9月13日投開票）の候補者が公表している"
-        "公約から、書かれている内容をそのまま紹介しています。",
-        "各候補の公約（公式サイト）:",
-        others,
-        "",
-        license_["attribution"],
-    ]) + "\n", encoding="utf-8")
+    others = [f"- {s.person}: {s.url}"
+              for s in election.MANIFESTO_SOURCES.values()]
+    (workdir / "description.txt").write_text(
+        english_description(
+            script.summary_en, ev.context, ev.source_url,
+            license_["attribution"],
+            extra_lines=[
+                "This video presents, as written, the content published by "
+                "candidates in the 2026 Okinawa gubernatorial election "
+                "(vote counted on September 13, 2026).",
+                "Official policy pages of each candidate:",
+                *others,
+            ]),
+        encoding="utf-8")
 
 
 def main() -> None:
