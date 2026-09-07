@@ -91,7 +91,6 @@ from scripts.script_writer import (  # noqa: E402
     ScriptGenerationRejected,
     ScriptMismatch,
     ScriptWriterUnavailable,
-    english_description,
     load_script,
     load_tiktok_script,
     write,
@@ -295,9 +294,7 @@ def _write_meta(workdir: Path, script, license_: dict, evidence: dict) -> None:
     # 「これは何のためにあるのか」を調べる負債になる）。
     (workdir / "meta.json").write_text(json.dumps({
         "id": workdir.name,
-        # YouTube に出る文字列は英語（2026-09-07 のオーナー決定）。
-        # 音声・テロップ・引用カードは日本語のままなので、ここだけが英語になる。
-        "title": script.title_en[:100],
+        "title": script.title[:100],
         "tags": script.tags,
         "category_id": "25",
         "expected_channel_id": CHANNEL_ID,
@@ -305,12 +302,14 @@ def _write_meta(workdir: Path, script, license_: dict, evidence: dict) -> None:
         "source_url": evidence["source_url"],
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    # 説明文の組み立ては script_writer.english_description に寄せる
-    # （run_election.py も同じ関数を呼ぶ。2箇所に書くと片方だけ日本語で出る）。
-    (workdir / "description.txt").write_text(
-        english_description(script.summary_en, evidence["context"],
-                            evidence["source_url"], license_["attribution"]),
-        encoding="utf-8")
+    (workdir / "description.txt").write_text("\n".join([
+        script.narration,
+        "",
+        f"根拠: {evidence['context']}",
+        evidence["source_url"],
+        "",
+        license_["attribution"],
+    ]) + "\n", encoding="utf-8")
 
 
 def write_tiktok_meta(workdir: Path, script, evidence: dict) -> None:

@@ -9,11 +9,8 @@ from scripts import narrate, script_writer
 from scripts.script_writer import (
     Script,
     ScriptGenerationRejected,
-    ScriptMismatch,
     ScriptWriterUnavailable,
     build_prompt,
-    english_description,
-    load_script,
     write,
 )
 
@@ -225,8 +222,6 @@ def test_parsed_outputがNoneのとき題材固有の例外になりstop_reason�
 def test_正常時はScriptインスタンスが返る(monkeypatch):
     parsed = Script(
         title="議員定数45削減、その中身は",
-        title_en="Cutting 45 Diet seats: what it actually means",
-        summary_en="An English summary that keeps the number 45 unchanged.",
         headline="議員定数45削減の中身",
         narration="ナレーション本文。" * 20,
         subtitle="議員定数45削減の中身を読む",
@@ -326,8 +321,6 @@ def test_短い見出しでも導入は窓に収まる():
 HAND_WRITTEN = {
     "source_url": RECIPE["evidence"]["source_url"],
     "title": "議員定数削減、四十五という数字の出どころ",
-    "title_en": "Where the number 45 in the seat-cut plan comes from",
-    "summary_en": "An English summary that keeps the number 45 unchanged.",
     "headline": "定数削減 四十五",
     "narration": "国会でこう述べられました。" * 20,
     "subtitle": "四十五削減という数字が国会で語られた",
@@ -388,55 +381,3 @@ def test_台本ファイルが読めなければ受け付けない(tmp_path):
 def test_台本ファイルが無ければ受け付けない(tmp_path):
     with pytest.raises(script_writer.ScriptMismatch):
         script_writer.load_script(tmp_path / "ない.json", RECIPE["evidence"])
-
-
-# ── YouTube の説明文（英語）────────────────────────────────────
-#
-# 画面（テロップ・引用カード）と音声は日本語のまま、YouTube に出る
-# タイトルと説明文だけを英語にする（2026-09-07 のオーナー決定）。
-
-def test_説明文の本文は英語でラベルも英語になる():
-    got = english_description(
-        "An English summary.", "第221回国会 参議院財政金融委員会 2026-06-16 塩入清香",
-        "https://kokkai.ndl.go.jp/txt/1/2",
-        "画像: Someone / CC BY 4.0（https://commons.wikimedia.org/wiki/File:X.jpg）")
-
-    assert got.startswith("An English summary.")
-    assert "Source: " in got and "根拠:" not in got
-    assert "Image: Someone / CC BY 4.0" in got and "画像:" not in got
-
-
-def test_出典の引用は原文の日本語をそのまま残す():
-    """人名や会議名を英訳すると、読みを推測した誤りが出典に入る。
-
-    実際に 塩入清香 は「しおいり さや」で、字面からは読めない。
-    英訳に差し替えると元の表記も消えるので、確かめる手段がなくなる。
-    """
-    context = "第221回国会 参議院財政金融委員会 2026-06-16 塩入清香"
-    got = english_description("Summary.", context, "https://example.go.jp/1", "画像: X / CC0")
-
-    assert context in got
-
-
-def test_選挙の併記は説明文の中に残る():
-    got = english_description(
-        "Summary.", "候補者 公約", "https://example.com/1", "画像: X / CC0",
-        extra_lines=["Official policy pages of each candidate:",
-                     "- A: https://example.com/a", "- B: https://example.com/b"])
-
-    assert "- A: https://example.com/a" in got
-    assert "- B: https://example.com/b" in got
-    # ライセンス表示は必ず最後まで残る（落とすと表示義務を満たさない）
-    assert got.rstrip().endswith("Image: X / CC0")
-
-
-def test_英語の項目が無い台本は受け付けない(tmp_path):
-    """全経路が同じ1つの検証を通る。片方だけ緩いと日本語のまま公開される。"""
-    data = {k: v for k, v in HAND_WRITTEN.items() if k != "title_en"}
-    path = tmp_path / "script.json"
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-
-    with pytest.raises(ScriptMismatch) as exc_info:
-        load_script(path, RECIPE["evidence"])
-
-    assert "title_en" in str(exc_info.value)
