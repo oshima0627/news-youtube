@@ -29,14 +29,20 @@ returned "Invalid transition" ... 'reason': 'invalidTransition'
 **設計の関門は正しく働いた**: `state/live.json` は書かれておらず、
 ロックは残らなかった（`start_broadcast` は遷移が成功してから状態を書く）。
 
-**修正後の再実行で配信が始まった（2026-09-09 09:11 UTC）:**
+**修正後の再実行で配信が通り、アーカイブまで残った（2026-09-09）:**
 
 ```
-wWGQuS3yfXc  live   public  monitor=False  ニュースラジオ 2026-09-09 09:11 UTC
+wWGQuS3yfXc  complete  public  ニュースラジオ 2026-09-09 09:11 UTC
+  uploadStatus : uploaded      duration : PT14M41S
+  actualStart  : 2026-09-09T09:12:07Z
+  actualEnd    : 2026-09-09T09:26:48Z
+  URL          : https://www.youtube.com/watch?v=wWGQuS3yfXc
+
 lzt1loCYxWM  ready  public  monitor=True   ← 失敗した空の枠（未削除）
 ```
 
-`state/live.json` に `live: true` が書かれた（遷移成功時だけ書かれる）。
+**このアーカイブは消さないこと。** 消すと再生時間もゼロになり、3日後の測定が
+成立しない。
 
 **⚠ 空の枠が1つ残っている**（一度も配信されていない。削除は未実施）:
 
@@ -67,10 +73,12 @@ ffmpeg の concat は行内のパスを **concat ファイルが置かれてい�
 **ニュースチャンネルで24時間のライブ配信を出す機能**を、ブランチ
 `claude/live-streaming-setup-2cca36` に実装した。**コードは書き終わっている。**
 
-**オーナーの承認を得て Task 1（前提の実測）を実行中。**
-**2026-09-09 09:11 UTC に公開配信が始まった（`wWGQuS3yfXc`）。**
-約15分流して `--stop` で止め、アーカイブが残るかを見るところ。
-そのあと3日後に基準値と比べる。
+**Task 1（前提の実測）の配信部分が完了した。** 2026-09-09 に14分41秒の
+公開配信を行い、**アーカイブが `public` の動画として残ることを確認した**
+（`wWGQuS3yfXc`）。デーモンと ffmpeg は停止済み、`state/live.json` も
+`live: false` でクリーン。
+
+**残るは3日後（2026-09-12以降）の測定だけ。** これが Task 1 の結論になる。
 
 - 設計: [`docs/superpowers/specs/2026-09-09-live-streaming-design.md`](docs/superpowers/specs/2026-09-09-live-streaming-design.md)
 - 計画: [`docs/superpowers/plans/2026-09-09-live-streaming.md`](docs/superpowers/plans/2026-09-09-live-streaming.md)（全10タスク）
@@ -79,8 +87,7 @@ ffmpeg の concat は行内のパスを **concat ファイルが置かれてい�
 **狙いは収益化要件の「有効な総再生時間4,000時間」。** Shorts ルートが約97倍
 足りないのに対し、4,000時間は平均同時視聴0.46人で届くと実測で分かったため。
 
-**⚠ いま配信中。止め忘れると11時間30分後に自動でローテーションし、
-新しい公開枠を作る。** 止め方は下記「次にやること」。
+**⚠ 次にやるのは実装ではなく2026-09-12以降の測定**（下記「次にやること」）。
 
 ## ⚠ state がブランチ間で分裂している（未解決・継続）
 
@@ -238,8 +245,15 @@ codec_name=aac   sample_rate=48000
   **これが外れたらこの機能は丸ごと無意味。実装より先に測る（Task 1）。**
 - **全57件のループは1度も焼き切れていない。「1周およそ40分」は
   5題材の実測（1題材47.9秒）からの外挿。**
-- **アーカイブが残るか、そして `videoOnDemand` に計上されるかは未検証。**
-  配信は始まったが、まだ停止していない。
+- **アーカイブが `videoOnDemand` として4,000時間に計上されるかは未検証。**
+  アーカイブが残ることまでは確認した。**計上されるかが Task 1 の本題で、
+  2026-09-12 以降にしか分からない。**
+- **配信の健全性が `bad` だった。** `healthStatus: bad | error: Video output low`。
+  中身が静止画なのでビットレートが約487kbps しか出ず（14.5MB ÷ 239.5秒）、
+  YouTube が 1080p30 に期待する 4,500kbps を大きく下回る。
+  **アーカイブは問題なく作られた**ので実害は未確認。直すなら
+  `build_live_loop.py` の ffmpeg に `-minrate`/`-maxrate`/`-bufsize` を足す。
+  **計上されるかを確かめる前に直さないこと**（変数が増える）。
 - **差し替え（ローテーション）は未実行。** 11時間30分たたないと起きないので、
   Task 9 で `ROTATE_AFTER` を短くして確かめる必要がある。
   `_run_forever` のループ本体にはテストが無い（純関数はテストで縛ってある）。
@@ -254,52 +268,49 @@ codec_name=aac   sample_rate=48000
 
 ## 次にやること
 
-1. **修正後のループが焼けたか確認する。**
+1. **2026-09-12 以降に基準値と比べる。これが Task 1 の結論。**
 
    ```bash
-   ffprobe -v error -show_entries format=duration,size -of default=nw=1 work/live/loop.mp4
+   python -c "
+   import sys, datetime; sys.path.insert(0,'scripts')
+   from upload_youtube import get_credentials
+   from googleapiclient.discovery import build
+   an = build('youtubeAnalytics','v2',credentials=get_credentials())
+   end = datetime.date.today(); start = end - datetime.timedelta(days=365)
+   r = an.reports().query(ids='channel==MINE', startDate=str(start), endDate=str(end),
+       metrics='estimatedMinutesWatched,views', dimensions='creatorContentType').execute()
+   for row in r.get('rows', []): print(f'{row[0]:18} {row[1]/60:9.2f} h {row[2]:>10,} views')
+   "
    ```
 
-   焼けていなければ concat の修正がまだ足りない。**ここが通るまで配信しない。**
+   **基準値は `videoOnDemand 0.08 h / 9 views`（2026-09-09 測定）。**
+   増えていれば設計の前提が正しい。**増えなければこの機能は丸ごと破棄する。**
 
-2. **Task 1 の続き: 公開配信を1本流す。** ⚠ **オーナーは 2026-09-09 に承認済み。**
-   **私（Claude）が実行しようとすると分類器に止められる。** オーナーが手で打つか、
-   許可ルールを足すこと。ループが焼けていることを確認してから:
+2. **Task 9: ローテーションとループ境界を確かめる。** ⚠ 公開配信。
+   `ROTATE_AFTER` を一時的に数分にして `run_live.py` を回し、
+   (a) ffmpeg を止めずに次の枠へ差し替えられるか
+   (b) `-stream_loop -1` と `-c copy` のループ境界で映像・音声が飛ばないか
+   を見る。終わったら `ROTATE_AFTER` を戻してテストを通すこと。
 
-   ```bash
-   python scripts/run_live.py --dry-run            # 材料の確認
-   python scripts/run_live.py                      # 公開配信を開始（バックグラウンド）
-   # …約15分…
-   python scripts/run_live.py --stop               # 枠を終了してアーカイブを確定
-   # デーモンのプロセスも止めること（--stop はプロセスを終わらせない）
-   ```
+3. **配信の健全性（`Video output low`）を直すか決める。**
+   **1 の結果が出るまで触らない。**
 
-   そのあと `liveBroadcasts.list(broadcastStatus="completed")` でアーカイブが
-   残ったかを見る。**アーカイブは消さないこと**（消すと再生時間もゼロになり
-   測定が成立しない）。
+4. **全57件のループを焼いて尺を測る。** 2,000〜2,900秒に入っていること。
+   5題材の実測（1題材47.9秒）からの外挿では約2,490秒。
 
-3. **3日後（2026-09-12以降）に基準値と比べる。**
-   `videoOnDemand` が **0.08 h から増えていること**。
-   **増えなければこの機能は丸ごと破棄する。**
-
-4. **Task 9: 実配信で未検証3点を潰す。** ⚠ **これも公開配信。**
-   `ROTATE_AFTER` を一時的に数分にして枠の差し替えとループ境界を見る。
-
-5. **全57件のループを焼いて尺を測る。** 2,000〜2,900秒に入っていること。
-
-6. **空の枠 `lzt1loCYxWM` を消すか決める。** 一度も配信されていないが `public`
+5. **空の枠 `lzt1loCYxWM` を消すか決める。** 一度も配信されていないが `public`
    なので、チャンネルに予定配信として並びうる。削除は取り消せないので保留中。
 
-7. **`claude/okinawa-governor-election-videos-d1ebd9` を統合する**（上記 ⚠）。
+6. **`claude/okinawa-governor-election-videos-d1ebd9` を統合する**（上記 ⚠）。
 
-8. **出典キャプションの改行を直す。** `recipes/` の発言系57件のうち**25件（44%）**で
+7. **出典キャプションの改行を直す。** `recipes/` の発言系57件のうち**25件（44%）**で
    人名が行をまたいでいる（`cards._draw_source`）。直したら同じ57件を再描画して数える。
 
-9. **`published.json` から `2D_cpARVcw0` のエントリを外す**（known-issues 8番の唯一の例外）。
+8. **`published.json` から `2D_cpARVcw0` のエントリを外す**（known-issues 8番の唯一の例外）。
 
-10. **選挙が終わったら `scripts/election.py` / `run_election.py` / `tests/test_election.py` を消す。**
+9. **選挙が終わったら `scripts/election.py` / `run_election.py` / `tests/test_election.py` を消す。**
 
-11. `com.-youtube` の Google OAuth トークンを失効・再発行する（持ち越し）。
+10. `com.-youtube` の Google OAuth トークンを失効・再発行する（持ち越し）。
 
 ## 触ってはいけないところ
 
@@ -327,6 +338,10 @@ codec_name=aac   sample_rate=48000
   403 invalidTransition で拒否される（2026-09-09 実測）。
 - **API を叩く経路は、偽物のクライアントでテストしても「通る」と言えない。**
   枠の作成・bind・遷移はどれも実際に叩くまで分からなかった。
+- **`liveBroadcasts.list` に `mine` と `broadcastStatus` を同時に渡さない。**
+  400 `incompatibleParameters` になる。`broadcastStatus` 単独で自分の枠が返る。
+- **`wWGQuS3yfXc`（2026-09-09 の実測配信のアーカイブ）を消さない。**
+  消すと再生時間もゼロになり、Task 1 の測定が成立しない。
 
 ### 既存（変わらず）
 
