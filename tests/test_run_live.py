@@ -6,7 +6,7 @@
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -330,6 +330,25 @@ def test_再構築は除外を付けたまま呼ぶ(monkeypatch, tmp_path):
     monkeypatch.setattr(m, "select_recipes",
                         lambda d, *, exclude_categories: got.setdefault(
                             "exclude", exclude_categories) or [{"id": "a"}])
-    monkeypatch.setattr(m, "build", lambda path, recipes: path)
+    monkeypatch.setattr(m, "build", lambda path, recipes, *, day: path)
     m.rebuild_loop(tmp_path / "loop.next.mp4", frozenset({"election"}))
     assert got["exclude"] == frozenset({"election"})
+
+
+def test_再構築のシャッフルの種はUTCの日付(monkeypatch, tmp_path):
+    """再構築の引き金（should_rebuild）は UTC の日付を見ている。種だけ
+    ローカル日付（build の既定の date.today()）だと両者がずれ、JST では
+    20:00 UTC の再構築と約11時間半後の 07:30 UTC の再構築が同じ日付の種を
+    引く。結果、続けて2本まったく同じ並びのループが流れる。"""
+    import scripts.run_live as m
+    got = {}
+
+    def _fake_build(path, recipes, *, day):
+        got["day"] = day
+        return path
+
+    monkeypatch.setattr(m, "select_recipes",
+                        lambda d, *, exclude_categories: [{"id": "a"}])
+    monkeypatch.setattr(m, "build", _fake_build)
+    m.rebuild_loop(tmp_path / "loop.next.mp4", frozenset())
+    assert got["day"] == datetime.now(timezone.utc).date()

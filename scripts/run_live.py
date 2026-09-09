@@ -289,9 +289,18 @@ def rebuild_loop(next_path: Path, exclude_categories: frozenset[str]) -> Path:
     `exclude_categories` は起動時に渡されたものをそのまま使う。ここに
     渡し忘れると、投票日に除外つきで作ったループが最初のローテーションで
     除外なしのループに差し替わる（公職選挙法129条）。
+
+    シャッフルの種になる `day` は **UTC の日付**を渡す。再構築の引き金
+    （`should_rebuild`）が UTC の日付で判定しているので、`build` の既定の
+    `date.today()`（ローカル日付）に任せると両者がずれる。JST では
+    20:00 UTC の再構築が翌ローカル日付の種を引き、その約11時間半後の
+    07:30 UTC の再構築が同じローカル日付の種を引くため、続けて2本
+    まったく同じ並びのループが流れる（量産型に見せないためのシャッフルが
+    半分死ぬ）。
     """
     return build(next_path, select_recipes(
-        RECIPES_DIR, exclude_categories=exclude_categories))
+        RECIPES_DIR, exclude_categories=exclude_categories),
+        day=datetime.now(timezone.utc).date())
 
 
 def _title(started: datetime) -> str:
