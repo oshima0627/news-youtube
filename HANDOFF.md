@@ -9,8 +9,13 @@
 **ニュースチャンネルで24時間のライブ配信を始める設計**を、ブランチ
 `claude/live-streaming-setup-2cca36`（ワークツリー `video-content-research-60a976`）で進めている。
 
-設計書は [`docs/superpowers/specs/2026-09-09-live-streaming-design.md`](docs/superpowers/specs/2026-09-09-live-streaming-design.md)。
-オーナーの確認待ちで止まっている。**実装は1行も書いていない。**
+**設計書と実装計画は両方書き終わり、オーナーの承認も取れている。**
+
+- 設計: [`docs/superpowers/specs/2026-09-09-live-streaming-design.md`](docs/superpowers/specs/2026-09-09-live-streaming-design.md)
+- 計画: [`docs/superpowers/plans/2026-09-09-live-streaming.md`](docs/superpowers/plans/2026-09-09-live-streaming.md)（全10タスク）
+
+**実装は1行も書いていない。** 次のセッションは **Task 1（前提の実測）から始める**。
+実行方式（サブエージェント方式／このセッションで順に実行）は**未決**で、そこで止まっている。
 
 **狙いは収益化要件の「有効な総再生時間4,000時間」**。実測でShortsルートが約97倍足りないのに対し、
 4,000時間は平均同時視聴0.46人で届くと分かったため。
@@ -90,6 +95,12 @@ TuneCore 側へ流れる）。**オーナーの判断でそのまま採用**（�
 4. **設計書を新規作成。** 自己レビューで2つの矛盾を直した
    （ffmpeg再起動とループ差し替えの両立／アーカイブ本数 730→760）。
 5. **`main` の BGM 作業をマージし、設計の BGM 節を `audio_mix.mix()` を通す形に直した。**
+6. **実装計画を作成**（`docs/superpowers/plans/2026-09-09-live-streaming.md`・全10タスク）。
+   既存の `audio_mix.mix` / `narrate.synthesize` / `cards_wide.render_*` /
+   `evidence.ground_excerpt` の**実シグネチャを読んでから**書いたので、
+   計画中のコードはプレースホルダではない。
+   セルフレビューで**仕様の1項目が全タスクから漏れていた**のを見つけて Task 10 を足した
+   （`loop.mp4` の日次差し替え判定がどこにも無かった）。
 
 ## 検証済みの事実（実際に画面に出した出力）
 
@@ -143,10 +154,15 @@ ffmpeg version 9.0-full_build
 
 ## 次にやること
 
-1. **オーナーが設計書を確認する。** 修正が要らなければ `writing-plans` で実装計画に落とす。
-2. **計画の最初のステップは実装ではなく実測。** 短い公開配信を1本流して終了し、
-   (a) アーカイブが残るか (b) 数日後に `videoOnDemand` の再生時間が増えるか、を見る。
+1. **実行方式を決める**（サブエージェント方式／順に実行）。計画は
+   `docs/superpowers/plans/2026-09-09-live-streaming.md`。
+2. **Task 1（前提の実測）から始める。実装より先。**
+   短い公開配信を1本流して終了し、(a) アーカイブが残るか
+   (b) **3日後以降**に `videoOnDemand` の再生時間が増えるか、を見る。
    現在 0.1時間なので増えれば一目で分かる。
+   **増えなければ Task 2 以降を全部破棄する**（設計が推定の上に乗っている）。
+
+   ⚠ **Task 1 と Task 9 は公開ライブ配信を伴う。実行前にオーナーの承認を取ること。**
 3. **予約した動画が公開されたか見る。** 事故があれば `python scripts/unpublish.py <video_id>`。
 4. **`claude/okinawa-governor-election-videos-d1ebd9` を統合する**（上記 ⚠）。
 5. **出典キャプションの改行を直す。** `recipes/` の発言系57件のうち**25件（44%）**で
