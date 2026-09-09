@@ -48,6 +48,22 @@ def should_rebuild(last_built: datetime | None, now: datetime) -> bool:
     return last_built.date() < now.date()
 
 
+def should_rebuild_on_rotation(rotated: bool, last_built: datetime | None,
+                               now: datetime) -> bool:
+    """このティックで再構築するか（R6c）。**ローテーションが起きたティックに限る。**
+
+    再構築は1時間を超えることもある重い処理。ローテーションが起きた直後の
+    ティックだけに絞ることで、ビルドを始める時点の新しい配信枠の壁時計は
+    必ずほぼ0になり、次のローテーションまでの `ROTATE_AFTER`
+    （11時間半）がまるごと余裕として残る。ここを外して「日付が変わった
+    ティックなら常に」にすると、古い配信枠が
+    `ROTATE_AFTER + ビルド時間` だけ生き延びてしまい、`ROTATE_AFTER` と
+    `HARD_LIMIT` の間の30分のマージンでは吸収しきれず12時間の壁を
+    越えてアーカイブを失いかねない。
+    """
+    return rotated and should_rebuild(last_built, now)
+
+
 def assert_within_archive_window(started_at: datetime, now: datetime) -> None:
     if now - started_at >= HARD_LIMIT:
         raise ArchiveWindowExceeded(
@@ -174,39 +190,52 @@ def main() -> None:
             # 枠を切り替えられないまま12時間に達したら、配信ごと止める。
             # 続けてアーカイブを丸ごと失うより、止めて11時間分を確定させる方が得。
             assert_within_archive_window(started, now)
+            rotated = False
             if should_rotate(started, now):
-                # 新しい loop.mp4 は古い ffmpeg がまだ配信中のうちに、別名で
-                # 作っておく（LOOP_MP4 に直接書こうとすると、Windows では
-                # 配信中の ffmpeg がファイルを開いたままで書き込みが失敗する）。
-                # ここが1時間を超えることもある重い処理なので、配信を止めてから
-                # ではなく止める前に済ませ、無配信の時間を数秒に抑える。
-                rebuilt = False
-                if should_rebuild(last_built, now):
-                    next_path = _rebuild_target(LOOP_MP4)
-                    from scripts.build_live_loop import (RECIPES_DIR, build,
-                                                         select_recipes)
-                    try:
-                        build(next_path, select_recipes(RECIPES_DIR))
-                    except Exception as e:
-                        # 再構築に失敗しても配信は止めない。今日はもう1回
-                        # このループで留守番し、次のローテーションで再挑戦する
-                        # （last_built を更新していないので should_rebuild は
-                        # 引き続き True を返す）。失敗が理由で watch-hours の
-                        # 蓄積を止めるほうが損失が大きい。
-                        print(f"! loop.mp4 の再構築に失敗しました。"
-                              f"今日はこのまま既存のループを流し続けます: {e}")
-                    else:
-                        rebuilt = True
+                # ここは高速に保つ。重いビルドをこの中に置くと、古い配信枠が
+                # ROTATE_AFTER + ビルド時間だけ生き延びてしまい、
+                # ROTATE_AFTER と HARD_LIMIT の間の30分のマージン
+                # （API の一時的な失敗を吸収するためのもの）では足りず、
+                # 12時間の壁を越えてアーカイブを丸ごと失いかねない（R6c）。
                 complete_broadcast(youtube)
-                if rebuilt:
-                    proc.terminate(); proc.wait(timeout=30)
-                    os.replace(next_path, LOOP_MP4)
-                    proc = _spawn_ffmpeg(key)
-                    last_built = now
                 started = datetime.now(timezone.utc)
                 start_broadcast(youtube, stream_id,
                                 f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC",
                                 now=started)
+                rotated = True
+            if should_rebuild_on_rotation(rotated, last_built, now):
+                # ローテーションが起きたティックに限るので、いま started
+                # した配信枠の壁時計はほぼ0。ここで再構築（1時間を超える
+                # こともある）をしている間は、たった今立ち上げた ffmpeg が
+                # 古い loop.mp4 をそのまま流し続ける。
+                #
+                # 新しい loop.mp4 は古い ffmpeg がまだ配信中のうちに、
+                # 別名で作っておく（LOOP_MP4 に直接書こうとすると、
+                # Windows では配信中の ffmpeg がファイルを開いたままで
+                # 書き込みが失敗する）。
+                next_path = _rebuild_target(LOOP_MP4)
+                from scripts.build_live_loop import (RECIPES_DIR, build,
+                                                     select_recipes)
+                try:
+                    build(next_path, select_recipes(RECIPES_DIR))
+                except Exception as e:
+                    # 再構築に失敗しても配信は止めない。今日はもう1回
+                    # このループで留守番し、次のローテーションで再挑戦する
+                    # （last_built を更新していないので should_rebuild は
+                    # 引き続き True を返す）。失敗が理由で watch-hours の
+                    # 蓄積を止めるほうが損失が大きい。
+                    print(f"! loop.mp4 の再構築に失敗しました。"
+                          f"今日はこのまま既存のループを流し続けます: {e}")
+                else:
+                    # ビルド中も started は動いていないはずなので、通常は
+                    # 絶対に引っかからない。それでも引っかかるなら想定外の
+                    # 事態（ビルドが異常に長い等）なので、アーカイブを
+                    # 黙って失うより止めて知らせる。
+                    assert_within_archive_window(started, datetime.now(timezone.utc))
+                    proc.terminate(); proc.wait(timeout=30)
+                    os.replace(next_path, LOOP_MP4)
+                    proc = _spawn_ffmpeg(key)
+                    last_built = now
     except (KeyboardInterrupt, ArchiveWindowExceeded) as e:
         print(f"! 配信を止めます: {e}")
     finally:

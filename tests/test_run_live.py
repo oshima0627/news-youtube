@@ -129,3 +129,32 @@ def test_再構築の書き出し先はloop_mp4そのものではない():
     next_path = _rebuild_target(LOOP_MP4)
     assert next_path != LOOP_MP4
     assert next_path.parent == LOOP_MP4.parent
+
+
+# ------------------------------------------------- R6c: 再構築はローテーション時だけ
+
+def test_ローテーションが起きていなければ日付が変わっていても作り直さない():
+    """R6cの回帰対策。このティックでローテーションが起きていないなら、
+    たとえ日付が変わっていても再構築を始めてはいけない。ここで始めると、
+    重いビルドの間ずっと古い配信枠が生き延び、12時間の壁を越えて
+    アーカイブを丸ごと失いかねない。"""
+    from scripts.run_live import should_rebuild_on_rotation
+    assert not should_rebuild_on_rotation(
+        False, datetime(2026, 9, 8, 23, 0), datetime(2026, 9, 9, 6, 0))
+
+
+def test_ローテーションが起きたティックで日付が変わっていれば作り直す():
+    from scripts.run_live import should_rebuild_on_rotation
+    assert should_rebuild_on_rotation(
+        True, datetime(2026, 9, 8, 23, 0), datetime(2026, 9, 9, 6, 0))
+
+
+def test_ローテーションが起きても同じ日なら作り直さない():
+    from scripts.run_live import should_rebuild_on_rotation
+    assert not should_rebuild_on_rotation(
+        True, datetime(2026, 9, 9, 0, 0), datetime(2026, 9, 9, 23, 0))
+
+
+def test_ローテーションが起きて一度も作っていなければ作る():
+    from scripts.run_live import should_rebuild_on_rotation
+    assert should_rebuild_on_rotation(True, None, datetime(2026, 9, 9, 6, 0))
