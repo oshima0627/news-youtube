@@ -34,3 +34,14 @@ def select_recipes(recipes_dir: Path, *,
             continue
         out.append(recipe)
     return sorted(out, key=lambda r: r["id"])
+
+
+def narration_text(recipe: dict) -> str:
+    """読み上げる文字列。**見出し・逐語引用・出典の連結だけ。**
+
+    ここに定型の地の文（「続いてのニュースです」等）を足さないこと。
+    足した瞬間、一次資料に無い文字列が出典キャプション付きで読み上げられ、
+    「一次資料が取れなければ公開しない」がこの経路だけ破れる。
+    """
+    ev = recipe["evidence"]
+    return "\n".join([recipe["headline"], ev["quote"], ev["context"]])

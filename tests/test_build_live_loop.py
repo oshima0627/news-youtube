@@ -1,7 +1,14 @@
 import json
 from pathlib import Path
 
-from scripts.build_live_loop import select_recipes
+from scripts.build_live_loop import narration_text, select_recipes
+
+_R = {
+    "id": "aaa", "headline": "奨学金の返済が長期化している", "category": "教育",
+    "evidence": {"quote": "平均で十五年かけて返済しています。",
+                 "context": "第221回国会 衆議院特別委員会 2026-05-08 谷浩一郎",
+                 "source_url": "https://kokkai.ndl.go.jp/txt/1/1", "speaker": "谷浩一郎"},
+}
 
 
 def _recipe(tmp_path: Path, rid: str, category: str) -> None:
@@ -31,3 +38,22 @@ def test_除外したカテゴリのレシピは入らない(tmp_path):
 def test_除外しなければ選挙も入る(tmp_path):
     _recipe(tmp_path, "bbb", "選挙")
     assert len(select_recipes(tmp_path)) == 1
+
+
+def test_見出しと引用と出典がこの順で入る():
+    got = narration_text(_R)
+    assert got.index("奨学金") < got.index("十五年") < got.index("谷浩一郎")
+
+
+def test_引用は逐語のまま入る():
+    assert _R["evidence"]["quote"] in narration_text(_R)
+
+
+def test_引用に無い言葉を足さない():
+    """台本は見出し・引用・出典の連結だけ。ここに定型の地の文を入れると、
+    一次資料に無い文字列が出典付きで読み上げられることになる。"""
+    got = narration_text(_R)
+    for part in (_R["headline"], _R["evidence"]["quote"], _R["evidence"]["context"]):
+        got = got.replace(part, "", 1)
+    # 残ってよいのは区切りの句読点と空白だけ
+    assert set(got) <= set("。、 \n"), f"余計な地の文が入っている: {got!r}"
