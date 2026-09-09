@@ -205,8 +205,15 @@ def start_broadcast(youtube, stream_id: str, title: str, *,
                     "scheduledStartTime": now.astimezone(timezone.utc).strftime(
                         "%Y-%m-%dT%H:%M:%SZ")},
         "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
-        # 自動で終わられるとローテーションの制御を失う
-        "contentDetails": {"enableAutoStart": False, "enableAutoStop": False},
+        "contentDetails": {
+            # 自動で終わられるとローテーションの制御を失う
+            "enableAutoStart": False, "enableAutoStop": False,
+            # **既定（true）のままだと testing 状態の経由が必須になる。**
+            # このデーモンは ready から live へ直行するので、既定のままでは
+            # transition が 403 invalidTransition で拒否される（2026-09-09 実測）。
+            # false にすると testing は経由不可になり、直行が正しい経路になる。
+            "monitorStream": {"enableMonitorStream": False},
+        },
     }
     broadcast_id = youtube.liveBroadcasts().insert(
         part="snippet,status,contentDetails", body=body).execute()["id"]

@@ -117,6 +117,22 @@ class _FakeYouTube:
         return {"id": "bc_001"}
 
 
+def test_モニターストリームを無効にして枠を作る(tmp_path):
+    """`enableMonitorStream` の既定は true で、その場合 YouTube は
+    **testing 状態の経由を必須にする**（公式ドキュメント: true なら必須で経由、
+    false なら経由不可）。このデーモンは testing を通らず ready から live へ
+    直行するので、既定のままだと transition が 403 invalidTransition で拒否される。
+
+    実測（2026-09-09）: 枠 lzt1loCYxWM が monitor=True で作られ、
+    ready のまま live に遷移できずに配信が始まらなかった。
+    """
+    from scripts.run_live import start_broadcast
+    yt = _FakeYouTube()
+    start_broadcast(yt, "st_1", "テスト", now=T0, state_path=tmp_path / "live.json")
+    body = next(kw["body"] for name, kw in yt.calls if name == "insert")
+    assert body["contentDetails"]["monitorStream"]["enableMonitorStream"] is False
+
+
 def test_枠を作ると状態に書かれる(tmp_path):
     from scripts.run_live import start_broadcast
     state = tmp_path / "live.json"
