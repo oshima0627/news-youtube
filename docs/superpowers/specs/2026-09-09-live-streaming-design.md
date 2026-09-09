@@ -114,7 +114,15 @@ ffmpeg -re -stream_loop -1 -i work/live/loop.mp4 -c copy -f flv \
 
 **理由**: CPUがほぼゼロになり、日次パイプラインと同じPCで24時間回せる。
 
-BGM は `bgm-youtube` の自前音源（Suno生成・自分の著作物）を低音量で敷く。
+BGM は **`audio_mix.mix()` を通す**。2026-09-09 に `scripts/audio_mix.py` が
+「BGM を敷く唯一の関門」として入り、ショート・長尺・TikTok の全経路がそこを通っている
+（`assets/bgm/petrichor.m4a`、voice から 18 LU 下、分離比 15 LU を割ったら `NarrationBuried`）。
+
+**ライブ経路に別の音量調整を書かない。** 判定基準を2箇所に置くと必ず食い違う。
+
+**未確認**: `mix()` は58秒のショートでしか実測していない。**40分の音源で通るか、
+処理時間が現実的かは測っていない。** 通らなければ `mix()` を直すのであって、
+ライブ側に別実装を作らない。
 
 ## 24時間サイクル：ffmpegは止めない。差し替えるのは枠だけ
 

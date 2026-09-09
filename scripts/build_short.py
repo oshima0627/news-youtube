@@ -37,6 +37,7 @@ from scripts.cards import (CARD_TOP, PHOTO_H, PHOTO_TOP, SHORT_SIZE,  # noqa: E4
 from scripts.narrate import (TARGET_MAX, TARGET_MIN, query_path,  # noqa: E402
                              segments_path, wav_duration_seconds)
 from scripts.evidence import ground_excerpt, has_figure  # noqa: E402
+from scripts import audio_mix  # noqa: E402
 from scripts.telop import spans as telop_spans  # noqa: E402
 from scripts.telop import stretch  # noqa: E402
 
@@ -193,7 +194,11 @@ def mp4_duration_seconds(path: Path) -> float:
     proc = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
+        # errors="replace" が要る。ffmpeg は stderr を UTF-8 で出すが
+        # Windows の既定は cp932 で、日本語を含むパスがあると decode で
+        # 落ちる。落ちると ffmpeg の失敗理由が UnicodeDecodeError に
+        # すり替わり、原因がログに残らない。
+        capture_output=True, text=True, errors="replace",
     )
     if proc.returncode != 0 or not proc.stdout.strip():
         raise RuntimeError(
@@ -290,6 +295,13 @@ def build(workdir: Path, *, assets_dir: Path | None = None,
     # 役割が重複するため外した。
     voice_duration = wav_duration_seconds(voice_path)
 
+    # BGM を敷く。**動画の音声はすべてこの関門を通る**（TikTok バリアントも
+    # この build() を再利用しているので、ここと build_long の2箇所で全経路）。
+    # ffmpeg に渡す音声を呼び出し側で組み立てない（CLAUDE.md「関門は1つ」）。
+    # 尺は voice.wav の実尺のまま使う。BGM の長さに引きずらせない。
+    mixed_path = workdir / "voice_bgm.wav"
+    mix = audio_mix.mix(voice_path, mixed_path)
+
     base = compose_base(src.photo, script, source, figure,
                         quote=recipe["evidence"].get("quote") or "")
     frames = plan_frames(workdir, script, voice_duration)
@@ -299,14 +311,15 @@ def build(workdir: Path, *, assets_dir: Path | None = None,
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_path),
-        "-i", str(voice_path),
+        "-i", str(mixed_path),
         "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
         "-r", "30", "-c:a", "aac", "-b:a", "192k",
         "-t", f"{voice_duration:.3f}",
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True,
+                       errors="replace")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"ffmpegの実行に失敗しました（workdir={workdir}, "
@@ -319,6 +332,10 @@ def build(workdir: Path, *, assets_dir: Path | None = None,
     print(f"  尺: voice.wav {voice_duration:.2f}秒 → video.mp4 {mp4_duration:.2f}秒"
           f"（差 {mp4_duration - voice_duration:+.2f}秒）")
     print(f"  テロップ: {len(frames)}枚")
+    print(f"  音声: ナレーション{mix.voice.integrated:.1f} LUFS / "
+          f"BGM{mix.bed.integrated:.1f} LUFS（分離{mix.separation_lu:.1f} LU）"
+          f" → 完成{mix.final.integrated:.1f} LUFS "
+          f"/ ピーク{mix.final.true_peak:.1f} dBFS")
     print(f"  画像の出典: {license_['attribution'].splitlines()[0]}")
     return out
 

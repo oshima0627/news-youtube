@@ -35,6 +35,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
 
 from scripts.build_short import _fill, mp4_duration_seconds  # noqa: E402,F401
+from scripts import audio_mix  # noqa: E402
 from scripts.cards_wide import (BODY_H, BODY_TOP, CARD_LEFT,  # noqa: E402
                                 PHOTO_LEFT, PHOTO_W, TELOP_TOP, WIDE_SIZE,
                                 render_contents, render_headline, render_quote,
@@ -216,7 +217,8 @@ def _concat_audio(workdir: Path, wavs: list[Path]) -> Path:
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
            "-i", str(listing), "-c:a", "pcm_s16le", str(out)]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True,
+                       errors="replace")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"音声の連結に失敗しました（{listing}）:\n{e.stderr}") from e
     return out
@@ -283,6 +285,10 @@ def build(workdir: Path) -> Path:
     voice = _concat_audio(workdir, wavs)
     total = wav_duration_seconds(voice)
 
+    # ショートと同じ関門を通す。判定基準を2箇所に書かない。
+    mixed_path = workdir / "voice_bgm.wav"
+    mix = audio_mix.mix(voice, mixed_path)
+
     # 映像の総尺（テロップの終わり）と音声の合計が食い違っていれば、
     # どこかのパートで割り付けと wav がずれている。焼く前に気づけるよう見る。
     timeline = join_frames(per_part, durations, fallbacks)[-1][2]
@@ -296,14 +302,15 @@ def build(workdir: Path) -> Path:
     cmd = [
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", str(concat_path),
-        "-i", str(voice),
+        "-i", str(mixed_path),
         "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
         "-r", str(FPS), "-c:a", "aac", "-b:a", "192k",
         "-t", f"{total:.3f}",
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True,
+                       errors="replace")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"ffmpegの実行に失敗しました（workdir={workdir}, "
@@ -313,6 +320,10 @@ def build(workdir: Path) -> Path:
     print(f"  尺: 音声{total:.2f}秒 → video.mp4 {mp4_duration:.2f}秒"
           f"（差 {mp4_duration - total:+.2f}秒）")
     print(f"  パート: {len(parts)}  テロップ: {sum(len(f) for f in filled)}枚")
+    print(f"  音声: ナレーション{mix.voice.integrated:.1f} LUFS / "
+          f"BGM{mix.bed.integrated:.1f} LUFS（分離{mix.separation_lu:.1f} LU）"
+          f" → 完成{mix.final.integrated:.1f} LUFS "
+          f"/ ピーク{mix.final.true_peak:.1f} dBFS")
     return out
 
 
