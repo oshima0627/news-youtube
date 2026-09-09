@@ -5,6 +5,7 @@
 あって呼び出し側からは外せない**こと。
 """
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -32,3 +33,48 @@ def test_12時間に達したら例外で止まる():
     assert_within_archive_window(T0, T0 + timedelta(hours=11, minutes=59))
     with pytest.raises(ArchiveWindowExceeded):
         assert_within_archive_window(T0, T0 + timedelta(hours=12))
+
+
+# ---------------------------------------------------------------- 枠の管理
+
+class _FakeYouTube:
+    """liveBroadcasts.insert / bind / transition の最小の身代わり。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def liveBroadcasts(self):
+        return self
+
+    def insert(self, **kw):
+        self.calls.append(("insert", kw))
+        return self
+
+    def bind(self, **kw):
+        self.calls.append(("bind", kw))
+        return self
+
+    def transition(self, **kw):
+        self.calls.append(("transition", kw))
+        return self
+
+    def execute(self):
+        return {"id": "bc_001"}
+
+
+def test_枠を作ると状態に書かれる(tmp_path):
+    from scripts.run_live import start_broadcast
+    state = tmp_path / "live.json"
+    got = start_broadcast(_FakeYouTube(), "st_1", "テスト", now=T0, state_path=state)
+    assert got == "bc_001"
+    assert json.loads(state.read_text(encoding="utf-8"))["broadcast_id"] == "bc_001"
+
+
+def test_配信中にもう一度呼ぶと止まる(tmp_path):
+    """呼び出し側ではなくこの関数の中で止めること。
+    直接叩く経路が素通りすると2本同時配信になる。"""
+    from scripts.run_live import AlreadyStreaming, start_broadcast
+    state = tmp_path / "live.json"
+    start_broadcast(_FakeYouTube(), "st_1", "1本目", now=T0, state_path=state)
+    with pytest.raises(AlreadyStreaming):
+        start_broadcast(_FakeYouTube(), "st_1", "2本目", now=T0, state_path=state)
