@@ -7,10 +7,18 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
+
+from scripts.upload_youtube import get_service  # noqa: E402
+
 STATE = ROOT / "state" / "live.json"
 
 # アーカイブは12時間未満の配信でしか作られない（YouTube公式ヘルプ）。
@@ -81,3 +89,80 @@ def start_broadcast(youtube, stream_id: str, title: str, *,
     _write_state(state_path, {"broadcast_id": broadcast_id, "stream_id": stream_id,
                               "started_at": now.isoformat(), "live": True})
     return broadcast_id
+
+
+def complete_broadcast(youtube, *, state_path: Path = STATE) -> str | None:
+    """配信中の枠を終了してアーカイブを確定させる。無ければ None。"""
+    state = _read_state(state_path)
+    broadcast_id = state.get("broadcast_id")
+    if not broadcast_id or not state.get("live"):
+        return None
+    youtube.liveBroadcasts().transition(
+        part="id,status", id=broadcast_id, broadcastStatus="complete").execute()
+    state["live"] = False
+    _write_state(state_path, state)
+    return broadcast_id
+
+
+def ensure_stream(youtube) -> tuple[str, str]:
+    """再利用可能なストリームを1本用意し、(stream_id, ストリームキー) を返す。
+
+    キーは固定。ffmpeg はこのキーに向けて流し続け、枠だけが差し替わる。
+    """
+    existing = youtube.liveStreams().list(
+        part="id,cdn", mine=True, maxResults=50).execute().get("items", [])
+    for item in existing:
+        if item["cdn"].get("ingestionType") == "rtmp":
+            return item["id"], item["cdn"]["ingestionInfo"]["streamName"]
+    created = youtube.liveStreams().insert(part="snippet,cdn", body={
+        "snippet": {"title": "news-radio"},
+        "cdn": {"frameRate": "30fps", "resolution": "1080p",
+                "ingestionType": "rtmp"},
+    }).execute()
+    return created["id"], created["cdn"]["ingestionInfo"]["streamName"]
+
+
+RTMP_BASE = "rtmp://a.rtmp.youtube.com/live2"
+LOOP_MP4 = ROOT / "work" / "live" / "loop.mp4"
+
+
+def _spawn_ffmpeg(key: str) -> subprocess.Popen:
+    """loop.mp4 を無限ループで RTMP に流す。**再エンコードしない。**"""
+    return subprocess.Popen([
+        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "-re", "-stream_loop", "-1", "-fflags", "+genpts",
+        "-i", str(LOOP_MP4), "-c", "copy", "-f", "flv", f"{RTMP_BASE}/{key}",
+    ])
+
+
+def main() -> None:
+    youtube = get_service()
+    stream_id, key = ensure_stream(youtube)
+    proc = _spawn_ffmpeg(key)
+    started = datetime.now(timezone.utc)
+    start_broadcast(youtube, stream_id,
+                    f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC", now=started)
+    try:
+        while True:
+            time.sleep(60)
+            now = datetime.now(timezone.utc)
+            if proc.poll() is not None:                 # ffmpeg が落ちた
+                proc = _spawn_ffmpeg(key)
+            # 枠を切り替えられないまま12時間に達したら、配信ごと止める。
+            # 続けてアーカイブを丸ごと失うより、止めて11時間分を確定させる方が得。
+            assert_within_archive_window(started, now)
+            if should_rotate(started, now):
+                complete_broadcast(youtube)
+                started = datetime.now(timezone.utc)
+                start_broadcast(youtube, stream_id,
+                                f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC",
+                                now=started)
+    except (KeyboardInterrupt, ArchiveWindowExceeded) as e:
+        print(f"! 配信を止めます: {e}")
+    finally:
+        proc.terminate()
+        complete_broadcast(youtube)
+
+
+if __name__ == "__main__":
+    main()

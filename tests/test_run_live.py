@@ -78,3 +78,27 @@ def test_配信中にもう一度呼ぶと止まる(tmp_path):
     start_broadcast(_FakeYouTube(), "st_1", "1本目", now=T0, state_path=state)
     with pytest.raises(AlreadyStreaming):
         start_broadcast(_FakeYouTube(), "st_1", "2本目", now=T0, state_path=state)
+
+
+def test_枠を終了すると状態のliveが下りる(tmp_path):
+    from scripts.run_live import complete_broadcast, start_broadcast
+    state = tmp_path / "live.json"
+    yt = _FakeYouTube()
+    start_broadcast(yt, "st_1", "1本目", now=T0, state_path=state)
+    got = complete_broadcast(yt, state_path=state)
+    assert got == "bc_001"
+    assert json.loads(state.read_text(encoding="utf-8"))["live"] is False
+
+
+def test_終了したあとなら次の枠を作れる(tmp_path):
+    from scripts.run_live import complete_broadcast, start_broadcast
+    state = tmp_path / "live.json"
+    yt = _FakeYouTube()
+    start_broadcast(yt, "st_1", "1本目", now=T0, state_path=state)
+    complete_broadcast(yt, state_path=state)
+    start_broadcast(yt, "st_1", "2本目", now=T0, state_path=state)   # 例外が出ないこと
+
+
+def test_配信中の枠が無ければ終了は何もしない(tmp_path):
+    from scripts.run_live import complete_broadcast
+    assert complete_broadcast(_FakeYouTube(), state_path=tmp_path / "live.json") is None
