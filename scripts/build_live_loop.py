@@ -13,9 +13,16 @@ import json
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))    # python scripts/X.py 形式で起動できるようにする
+
+from scripts.cards_wide import (BODY_TOP, CARD_W, WIDE_SIZE,  # noqa: E402
+                                render_headline, render_quote)
+from scripts.draw import NAVY  # noqa: E402
+from scripts.evidence import ground_excerpt  # noqa: E402
 
 RECIPES_DIR = ROOT / "recipes"
 
@@ -45,3 +52,23 @@ def narration_text(recipe: dict) -> str:
     """
     ev = recipe["evidence"]
     return "\n".join([recipe["headline"], ev["quote"], ev["context"]])
+
+
+def render_frame(recipe: dict) -> Image.Image:
+    """1題材ぶんの静止画。**写真枠は使わない。**
+
+    50件ぶんの写真が work/ から消えており、取り直すと人物写真の
+    取り違えリスクを新しい経路に持ち込む（CLAUDE.md）。
+
+    引用カードは横中央に置く（写真枠 CARD_LEFT ではない）。CARD_LEFT は
+    左に実写を置く前提の座標で、写真を使わないこの設計でそのまま使うと
+    画面の左半分が紺色の空白になる。
+    """
+    ev = recipe["evidence"]
+    base = Image.new("RGB", WIDE_SIZE, NAVY)
+    base.paste(render_headline(recipe["headline"]), (0, 0))
+    # ground_excerpt を通すことで、カードに出る文字列が逐語引用であることを担保する
+    quote = ground_excerpt(ev["quote"], ev["quote"])
+    base.paste(render_quote(quote, ev["context"]),
+               ((WIDE_SIZE[0] - CARD_W) // 2, BODY_TOP))
+    return base
