@@ -102,3 +102,20 @@ def test_終了したあとなら次の枠を作れる(tmp_path):
 def test_配信中の枠が無ければ終了は何もしない(tmp_path):
     from scripts.run_live import complete_broadcast
     assert complete_broadcast(_FakeYouTube(), state_path=tmp_path / "live.json") is None
+
+
+# ---------------------------------------------------------- loop.mp4 の日次差し替え
+
+def test_日付が変わっていれば作り直す():
+    from scripts.run_live import should_rebuild
+    assert should_rebuild(datetime(2026, 9, 8, 23, 0), datetime(2026, 9, 9, 6, 0))
+
+
+def test_同じ日なら作り直さない():
+    from scripts.run_live import should_rebuild
+    assert not should_rebuild(datetime(2026, 9, 9, 0, 0), datetime(2026, 9, 9, 23, 0))
+
+
+def test_一度も作っていなければ作る():
+    from scripts.run_live import should_rebuild
+    assert should_rebuild(None, datetime(2026, 9, 9, 6, 0))

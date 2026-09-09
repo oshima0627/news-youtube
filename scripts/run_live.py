@@ -36,6 +36,17 @@ def should_rotate(started_at: datetime, now: datetime) -> bool:
     return now - started_at >= ROTATE_AFTER
 
 
+def should_rebuild(last_built: datetime | None, now: datetime) -> bool:
+    """loop.mp4 を作り直すか。1日1回だけ。
+
+    新しい loop.mp4 は ffmpeg を再起動しないと反映されないので、
+    ローテーションのうち日付が変わって最初の1回だけで入れ替える。
+    """
+    if last_built is None:
+        return True
+    return last_built.date() < now.date()
+
+
 def assert_within_archive_window(started_at: datetime, now: datetime) -> None:
     if now - started_at >= HARD_LIMIT:
         raise ArchiveWindowExceeded(
@@ -140,6 +151,7 @@ def main() -> None:
     stream_id, key = ensure_stream(youtube)
     proc = _spawn_ffmpeg(key)
     started = datetime.now(timezone.utc)
+    last_built = datetime.utcnow()
     start_broadcast(youtube, stream_id,
                     f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC", now=started)
     try:
@@ -153,6 +165,13 @@ def main() -> None:
             assert_within_archive_window(started, now)
             if should_rotate(started, now):
                 complete_broadcast(youtube)
+                if should_rebuild(last_built, now):
+                    proc.terminate(); proc.wait(timeout=30)
+                    from scripts.build_live_loop import (RECIPES_DIR, build,
+                                                         select_recipes)
+                    build(LOOP_MP4, select_recipes(RECIPES_DIR))
+                    last_built = now
+                    proc = _spawn_ffmpeg(key)
                 started = datetime.now(timezone.utc)
                 start_broadcast(youtube, stream_id,
                                 f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC",
