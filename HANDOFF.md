@@ -212,8 +212,13 @@ codec_name=aac   sample_rate=48000
 - concat のパス: `tests/test_build_live_loop.py` **33 passed**
 - monitorStream: `tests/test_run_live.py` **32 passed**
 
-**全件の再実行は走らせたが、このファイルを書いた時点で結果を確認していない。**
-確認するまで「全部通った」と書かないこと。
+全件の再実行を画面に出して確認した:
+
+```
+666 passed in 205.60s (0:03:25)
+```
+
+**既存のテストは1件も落ちていない。**
 
 ## 未検証のもの
 
