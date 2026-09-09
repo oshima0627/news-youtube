@@ -326,9 +326,48 @@ def test_buildはレシピごとに合成とmixを呼びffmpegの結合コマン
     assert len(audio_lines) == 2   # レシピ2件ぶんの mix 済み wav
 
     frame_lines = (work / "frames.txt").read_text(encoding="utf-8").splitlines()
-    last_png = (work / "001_00.png").as_posix()
+    last_png = "001_00.png"
     assert frame_lines.count(f"file '{last_png}'") == 2   # concat は最後を2度書く
     assert "duration 3.000" in frame_lines   # mix後の実尺（fake_mixが書いた3秒）がそのまま使われる
+
+
+def test_concatの各行はconcatファイルのある場所から辿れる(tmp_path, monkeypatch):
+    """ffmpeg の concat デマルチプレクサは行内のパスを **concat ファイルが
+    置かれているディレクトリ** から解決する。cwd 基準の相対パスを書くと
+    `parts/parts/000_00.png` のように二重になり、1枚も開けない。
+
+    ffmpeg を偽物にしたテストだけでは、この行が実際に辿れるかを誰も見ない。
+    実測（2026-09-09）で 664件が通ったまま mp4 が1本も焼けていなかった。
+    ここは ffmpeg の解決規則そのものをテストにしてある。
+    """
+    import scripts.build_live_loop as m
+
+    def fake_synthesize(text, dest, *, target_min, target_max):
+        _silence_wav(dest, 2.0)
+        return dest
+
+    def fake_mix(voice_path, out_path, *, bgm_path=None):
+        _silence_wav(out_path, 3.0)
+
+    monkeypatch.setattr(m, "synthesize", fake_synthesize)
+    monkeypatch.setattr(m, "mix", fake_mix)
+    monkeypatch.setattr(m.subprocess, "run", lambda cmd, **kw: None)
+
+    # **相対パスで呼ぶ。** 絶対パスだと二重化が起きず、この欠陥をすり抜ける。
+    # 実運用の呼び出しは work/live/loop.mp4（相対）。
+    monkeypatch.chdir(tmp_path)
+    out_path = Path("out") / "loop.mp4"
+    m.build(out_path, [_R, dict(_R, id="bbb")], day=date(2026, 9, 9))
+
+    work = out_path.parent / "parts"
+    for listing in (work / "audio.txt", work / "frames.txt"):
+        refs = [line[len("file '"):-1]
+                for line in listing.read_text(encoding="utf-8").splitlines()
+                if line.startswith("file '")]
+        assert refs, f"{listing.name} に file 行が無い"
+        for ref in refs:
+            assert (listing.parent / ref).exists(), (
+                f"{listing.name} の {ref!r} が concat ファイルの場所から辿れない")
 
 
 def test_buildはffmpeg失敗時に原因つきの例外にする(tmp_path, monkeypatch):

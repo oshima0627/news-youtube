@@ -347,15 +347,19 @@ def build(out_path: Path, recipes: list[dict], *, workdir: Path | None = None,
             render_frame(recipe, piece).save(png)
             frames.append((png, dur))
 
+    # concat の行はファイル名だけを書く（`build_long._concat_audio` と同じ）。
+    # ffmpeg はこのパスを **concat ファイルが置かれている場所** から解決するので、
+    # cwd 基準の相対パスを書くと parts/parts/000_00.png のように二重になり、
+    # 1枚も開けない。素材は concat ファイルと同じ work に置いてある。
     audio_list = work / "audio.txt"
     audio_list.write_text(
-        "\n".join(f"file '{w.as_posix()}'" for w in wavs) + "\n", encoding="utf-8")
+        "\n".join(f"file '{w.name}'" for w in wavs) + "\n", encoding="utf-8")
     frame_list = work / "frames.txt"
     lines = []
     for png, dur in frames:
-        lines.append(f"file '{png.as_posix()}'")
+        lines.append(f"file '{png.name}'")
         lines.append(f"duration {dur:.3f}")
-    lines.append(f"file '{frames[-1][0].as_posix()}'")   # concat は最後を2度書く
+    lines.append(f"file '{frames[-1][0].name}'")   # concat は最後を2度書く
     frame_list.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
