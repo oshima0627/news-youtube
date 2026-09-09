@@ -119,3 +119,13 @@ def test_同じ日なら作り直さない():
 def test_一度も作っていなければ作る():
     from scripts.run_live import should_rebuild
     assert should_rebuild(None, datetime(2026, 9, 9, 6, 0))
+
+
+def test_再構築の書き出し先はloop_mp4そのものではない():
+    """配信中の ffmpeg が loop.mp4 を開いたままなので、そこには直接書けない
+    （Windows では書き込みが失敗する）。ビルドは別名に対して行い、
+    終わってから os.replace で差し替える。"""
+    from scripts.run_live import LOOP_MP4, _rebuild_target
+    next_path = _rebuild_target(LOOP_MP4)
+    assert next_path != LOOP_MP4
+    assert next_path.parent == LOOP_MP4.parent

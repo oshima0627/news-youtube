@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -137,6 +138,16 @@ RTMP_BASE = "rtmp://a.rtmp.youtube.com/live2"
 LOOP_MP4 = ROOT / "work" / "live" / "loop.mp4"
 
 
+def _rebuild_target(loop_path: Path) -> Path:
+    """再構築した loop.mp4 を書き出す先。**`loop_path` そのものではない。**
+
+    配信中の ffmpeg がまだ `loop_path` を開いたまま流しているので、
+    そこに直接書こうとすると Windows では書き込みが失敗する。ビルドが
+    終わったあと `os.replace` で `loop_path` に差し替える。
+    """
+    return loop_path.with_suffix(".next.mp4")
+
+
 def _spawn_ffmpeg(key: str) -> subprocess.Popen:
     """loop.mp4 を無限ループで RTMP に流す。**再エンコードしない。**"""
     return subprocess.Popen([
@@ -151,7 +162,7 @@ def main() -> None:
     stream_id, key = ensure_stream(youtube)
     proc = _spawn_ffmpeg(key)
     started = datetime.now(timezone.utc)
-    last_built = datetime.utcnow()
+    last_built = datetime.now(timezone.utc)
     start_broadcast(youtube, stream_id,
                     f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC", now=started)
     try:
@@ -164,14 +175,34 @@ def main() -> None:
             # 続けてアーカイブを丸ごと失うより、止めて11時間分を確定させる方が得。
             assert_within_archive_window(started, now)
             if should_rotate(started, now):
-                complete_broadcast(youtube)
+                # 新しい loop.mp4 は古い ffmpeg がまだ配信中のうちに、別名で
+                # 作っておく（LOOP_MP4 に直接書こうとすると、Windows では
+                # 配信中の ffmpeg がファイルを開いたままで書き込みが失敗する）。
+                # ここが1時間を超えることもある重い処理なので、配信を止めてから
+                # ではなく止める前に済ませ、無配信の時間を数秒に抑える。
+                rebuilt = False
                 if should_rebuild(last_built, now):
-                    proc.terminate(); proc.wait(timeout=30)
+                    next_path = _rebuild_target(LOOP_MP4)
                     from scripts.build_live_loop import (RECIPES_DIR, build,
                                                          select_recipes)
-                    build(LOOP_MP4, select_recipes(RECIPES_DIR))
-                    last_built = now
+                    try:
+                        build(next_path, select_recipes(RECIPES_DIR))
+                    except Exception as e:
+                        # 再構築に失敗しても配信は止めない。今日はもう1回
+                        # このループで留守番し、次のローテーションで再挑戦する
+                        # （last_built を更新していないので should_rebuild は
+                        # 引き続き True を返す）。失敗が理由で watch-hours の
+                        # 蓄積を止めるほうが損失が大きい。
+                        print(f"! loop.mp4 の再構築に失敗しました。"
+                              f"今日はこのまま既存のループを流し続けます: {e}")
+                    else:
+                        rebuilt = True
+                complete_broadcast(youtube)
+                if rebuilt:
+                    proc.terminate(); proc.wait(timeout=30)
+                    os.replace(next_path, LOOP_MP4)
                     proc = _spawn_ffmpeg(key)
+                    last_built = now
                 started = datetime.now(timezone.utc)
                 start_broadcast(youtube, stream_id,
                                 f"ニュースラジオ {started:%Y-%m-%d %H:%M} UTC",
