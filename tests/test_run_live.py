@@ -10,8 +10,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from scripts.run_live import (HARD_LIMIT, ROTATE_AFTER, ArchiveWindowExceeded,
-                              assert_within_archive_window, should_rotate)
+from scripts.run_live import (FFMPEG_RESTART_LIMIT, FFMPEG_RESTART_WINDOW,
+                              HARD_LIMIT, ROTATE_AFTER, ArchiveWindowExceeded,
+                              StreamNotActive, assert_within_archive_window,
+                              record_restart, should_rotate,
+                              too_many_restarts, wait_for_stream_active)
 
 T0 = datetime(2026, 9, 9, 0, 0, 0)
 
@@ -37,11 +40,31 @@ def test_12時間に達したら例外で止まる():
 
 # ---------------------------------------------------------------- 枠の管理
 
+class _FakeStreams:
+    """liveStreams.list の最小の身代わり。呼ぶたびに次の状態を返す。"""
+
+    def __init__(self, statuses):
+        self.statuses = list(statuses)
+        self.calls = 0
+
+    def list(self, **kw):
+        return self
+
+    def execute(self):
+        self.calls += 1
+        status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        return {"items": [{"status": {"streamStatus": status}}]}
+
+
 class _FakeYouTube:
     """liveBroadcasts.insert / bind / transition の最小の身代わり。"""
 
-    def __init__(self):
+    def __init__(self, stream_statuses=("active",)):
         self.calls = []
+        self.streams = _FakeStreams(stream_statuses)
+
+    def liveStreams(self):
+        return self.streams
 
     def liveBroadcasts(self):
         return self
@@ -158,3 +181,123 @@ def test_ローテーションが起きても同じ日なら作り直さない()
 def test_ローテーションが起きて一度も作っていなければ作る():
     from scripts.run_live import should_rebuild_on_rotation
     assert should_rebuild_on_rotation(True, None, datetime(2026, 9, 9, 6, 0))
+
+
+# ------------------------------------------------- ingest が active になるまで待つ
+
+def test_activeになるまで待ってから枠を作る():
+    """transition(live) はバインドしたストリームが active でないと
+    errorStreamInactive で落ちる。ffmpeg を起こした直後は未登録なので、
+    待たずに transition すると初回はまず失敗する。"""
+    slept = []
+    yt = _FakeYouTube(stream_statuses=["inactive", "inactive", "active"])
+    wait_for_stream_active(yt, "st_1", poll_seconds=5, sleep=slept.append)
+    assert slept == [5, 5]
+    assert yt.streams.calls == 3
+
+
+def test_activeにならなければ例外で止まる():
+    ticks = iter([0.0, 10.0, 20.0, 30.0, 40.0])
+    yt = _FakeYouTube(stream_statuses=["inactive"])
+    with pytest.raises(StreamNotActive):
+        wait_for_stream_active(yt, "st_1", timeout_seconds=15,
+                               poll_seconds=5, sleep=lambda s: None,
+                               clock=lambda: next(ticks))
+
+
+def test_activeを待つのは枠を作る関数の中(tmp_path, monkeypatch):
+    """呼び出し側に置くと、直接叩く経路が errorStreamInactive で落ちる。
+    active になっていなければ insert まで到達しないこと。"""
+    import scripts.run_live as m
+    monkeypatch.setattr(m, "STREAM_ACTIVE_TIMEOUT", 0.0)
+    monkeypatch.setattr(m, "STREAM_POLL_SECONDS", 0.0)
+    yt = _FakeYouTube(stream_statuses=["inactive"])
+    with pytest.raises(StreamNotActive):
+        m.start_broadcast(yt, "st_1", "テスト", now=T0,
+                          state_path=tmp_path / "live.json")
+    assert yt.calls == []                     # insert / bind / transition のどれも呼ばれない
+    assert not (tmp_path / "live.json").exists()
+
+
+# ------------------------------------------------------------ ffmpeg の再起動上限
+
+def test_窓の中で上限を超えたら止める():
+    """loop.mp4 が壊れていると ffmpeg は即落ちする。上限が無いと11.5時間ぶん
+    再起動を繰り返し、配信枠は live のまま映像が一度も届かない。"""
+    now = T0
+    restarts = []
+    for i in range(FFMPEG_RESTART_LIMIT):
+        restarts = record_restart(restarts, now + timedelta(seconds=60 * i))
+        assert not too_many_restarts(restarts)
+    restarts = record_restart(restarts, now + timedelta(seconds=60 * FFMPEG_RESTART_LIMIT))
+    assert too_many_restarts(restarts)
+
+
+def test_窓の外に出た再起動は数えない():
+    """散発的な再起動でデーモンを止めない。数えるのは窓の中だけ。"""
+    restarts = []
+    for i in range(FFMPEG_RESTART_LIMIT * 3):
+        restarts = record_restart(restarts, T0 + FFMPEG_RESTART_WINDOW * i)
+        assert not too_many_restarts(restarts)
+
+
+# ------------------------------------------------------------------- CLI の入口
+
+def test_stopは配信枠を終了して終わる(monkeypatch):
+    """落ちたあと state/live.json には live: true が残り、次の起動は
+    AlreadyStreaming で止まる。手で state を書き換えずに戻せる出口が要る。"""
+    import scripts.run_live as m
+    called = []
+    monkeypatch.setattr(m, "get_service", lambda: "yt")
+    monkeypatch.setattr(m, "complete_broadcast", lambda yt: called.append(yt) or "bc_9")
+    monkeypatch.setattr(m, "_run_forever", lambda *a, **k: pytest.fail("配信を始めてはいけない"))
+    m.main(["--stop"])
+    assert called == ["yt"]
+
+
+def test_dry_runは配信枠もffmpegも作らない(monkeypatch, tmp_path, capsys):
+    import scripts.run_live as m
+    loop = tmp_path / "loop.mp4"
+    loop.write_bytes(b"")
+    monkeypatch.setattr(m, "LOOP_MP4", loop)
+    monkeypatch.setattr(m, "select_recipes", lambda d, *, exclude_categories: [{"id": "a"}])
+    monkeypatch.setattr(m, "_run_forever", lambda *a, **k: pytest.fail("配信を始めてはいけない"))
+    m.main(["--dry-run"])
+    assert "公開されません" in capsys.readouterr().out
+
+
+def test_loop_mp4が無ければ配信を始めない(monkeypatch, tmp_path):
+    """先に YouTube API を叩いてから落ちると、原因が分かりにくいうえに
+    枠だけが残る。"""
+    import scripts.run_live as m
+    monkeypatch.setattr(m, "LOOP_MP4", tmp_path / "ない.mp4")
+    monkeypatch.setattr(m, "_run_forever", lambda *a, **k: pytest.fail("配信を始めてはいけない"))
+    with pytest.raises(SystemExit, match="loop"):
+        m.main([])
+
+
+def test_除外カテゴリはプロセスの間ずっと効く(monkeypatch, tmp_path):
+    """デーモンは日付が変わるたびに loop.mp4 を作り直す。ここに除外が
+    渡っていないと、投票日に作った除外つきループが最初のローテーションで
+    除外なしのループに差し替わる。"""
+    import scripts.run_live as m
+    loop = tmp_path / "loop.mp4"
+    loop.write_bytes(b"")
+    monkeypatch.setattr(m, "LOOP_MP4", loop)
+    got = []
+    monkeypatch.setattr(m, "_run_forever", lambda exclude: got.append(exclude))
+    m.main(["--exclude-category", "election"])
+    assert got == [frozenset({"election"})]
+
+
+def test_再構築は除外を付けたまま呼ぶ(monkeypatch, tmp_path):
+    """日次の作り直しが除外を落とすと、投票日の除外は最初のローテーションで
+    消える。除外の指定はビルドまで届いていること。"""
+    import scripts.run_live as m
+    got = {}
+    monkeypatch.setattr(m, "select_recipes",
+                        lambda d, *, exclude_categories: got.setdefault(
+                            "exclude", exclude_categories) or [{"id": "a"}])
+    monkeypatch.setattr(m, "build", lambda path, recipes: path)
+    m.rebuild_loop(tmp_path / "loop.next.mp4", frozenset({"election"}))
+    assert got["exclude"] == frozenset({"election"})
