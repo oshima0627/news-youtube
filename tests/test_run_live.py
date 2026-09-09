@@ -11,9 +11,11 @@ from datetime import datetime, timedelta
 import pytest
 
 from scripts.run_live import (FFMPEG_RESTART_LIMIT, FFMPEG_RESTART_WINDOW,
-                              HARD_LIMIT, ROTATE_AFTER, ArchiveWindowExceeded,
+                              HARD_LIMIT, ROTATE_AFTER, ROTATION_GIVE_UP_AFTER,
+                              ArchiveWindowExceeded,
                               StreamNotActive, assert_within_archive_window,
-                              record_restart, should_rotate,
+                              record_restart, should_give_up_rotation,
+                              should_rotate,
                               too_many_restarts, wait_for_stream_active)
 
 T0 = datetime(2026, 9, 9, 0, 0, 0)
@@ -36,6 +38,36 @@ def test_12時間に達したら例外で止まる():
     assert_within_archive_window(T0, T0 + timedelta(hours=11, minutes=59))
     with pytest.raises(ArchiveWindowExceeded):
         assert_within_archive_window(T0, T0 + timedelta(hours=12))
+
+
+# ------------------------------------- 切り替えのやり直しには終わりがある
+
+def test_マージンの内側なら切り替えをやり直す():
+    """API の一時的な失敗で11時間半ぶんを捨てない。30分のマージンは
+    このやり直しのためにある。"""
+    assert not should_give_up_rotation(T0, T0 + timedelta(hours=11, minutes=31))
+    assert not should_give_up_rotation(T0, T0 + timedelta(hours=11, minutes=54))
+
+
+def test_12時間の手前でやり直しを諦める():
+    """やり直しに終わりが無いと、止まるころには12時間を跨いだあとで
+    アーカイブが1本も作られない。「30分ぶんのやり直しを失う」が
+    「11時間半のアーカイブを失う」に化ける。"""
+    assert should_give_up_rotation(T0, T0 + timedelta(hours=11, minutes=55))
+    assert should_give_up_rotation(T0, T0 + timedelta(hours=12))
+
+
+def test_諦める線はローテーションと12時間の間にある():
+    assert ROTATE_AFTER < ROTATION_GIVE_UP_AFTER < HARD_LIMIT
+    assert HARD_LIMIT - ROTATION_GIVE_UP_AFTER >= timedelta(minutes=5)
+
+
+def test_諦めた時点ではまだアーカイブの窓の中にいる():
+    """諦めた直後に finally が complete_broadcast する。その瞬間に
+    12時間を越えていたら、やり直しを打ち切った意味が無い。"""
+    assert_within_archive_window(T0, T0 + ROTATION_GIVE_UP_AFTER)
+    # 諦めるより前に、切り替えを試す機会が何ティックもあること
+    assert ROTATION_GIVE_UP_AFTER - ROTATE_AFTER >= timedelta(minutes=10)
 
 
 # ---------------------------------------------------------------- 枠の管理

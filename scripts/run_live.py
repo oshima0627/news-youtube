@@ -35,6 +35,13 @@ HARD_LIMIT = timedelta(hours=12)
 # やり直す必要がある**（main のローテーション部分の try/except）。例外が
 # そのまま main を抜けると、マージンは1秒も使われずに配信が終わる。
 ROTATE_AFTER = timedelta(hours=11, minutes=30)
+# やり直しを諦める線。**マージンの中に必ず収まる位置に置く。**
+# やり直しに終わりが無いと、API の失敗が30分続いたときティックが
+# `HARD_LIMIT` を越えてから assert_within_archive_window で止まる——
+# つまり **12時間を跨いだあとで枠を閉じる**ことになり、アーカイブは
+# 作られず11時間半が丸ごと0分になる。この線を越えたらやり直しをやめ、
+# まだ窓の中にいるうちに枠を確定させてデーモンを止める。
+ROTATION_GIVE_UP_AFTER = HARD_LIMIT - timedelta(minutes=5)
 
 # ffmpeg の再起動の上限（この窓の中でこの回数を超えたら止めて通知する）。
 # loop.mp4 が壊れていると ffmpeg は即座に落ち、上限が無いと11.5時間ぶん
@@ -61,8 +68,26 @@ class StreamNotActive(RuntimeError):
     """ingest が active にならない。この状態で live にはできない。"""
 
 
+class RotationGaveUp(RuntimeError):
+    """枠の切り替えが繰り返し失敗し、12時間の壁の手前で諦めた。"""
+
+
 def should_rotate(started_at: datetime, now: datetime) -> bool:
     return now - started_at >= ROTATE_AFTER
+
+
+def should_give_up_rotation(started_at: datetime, now: datetime) -> bool:
+    """切り替えのやり直しをやめて、いまの枠を確定させるか。
+
+    `ROTATE_AFTER` と `HARD_LIMIT` の間の30分は、API の一時的な失敗を
+    次のティックでやり直すためのマージン。**ただしやり直しには終わりが
+    要る。** 失敗が続いたまま `HARD_LIMIT` に達すると、そのとき初めて
+    assert_within_archive_window が投げるが、その時点で配信はすでに
+    12時間を跨いでいて、閉じてもアーカイブは作られない
+    （11時間半ぶんが丸ごと0分）。ここで先に諦めれば、窓の中にいるうちに
+    枠が確定してアーカイブが残る。
+    """
+    return now - started_at >= ROTATION_GIVE_UP_AFTER
 
 
 def should_rebuild(last_built: datetime | None, now: datetime) -> bool:
@@ -335,6 +360,15 @@ def _run_forever(exclude_categories: frozenset[str]) -> None:
                     print(f"✓ 配信枠を切り替えました: {broadcast_id}"
                           f"（{new_started:%Y-%m-%d %H:%M} UTC 開始）")
                 except Exception as e:
+                    # やり直しには終わりを付ける。ここで諦めずに
+                    # HARD_LIMIT まで粘ると、止まるころには12時間を
+                    # 跨いだあとで、アーカイブは1本も残らない。
+                    if should_give_up_rotation(started, now):
+                        raise RotationGaveUp(
+                            f"配信枠の切り替えが開始から {now - started} "
+                            f"経っても成功しません（最後の失敗: {e}）。"
+                            f"12時間を越えるとアーカイブが作られないので、"
+                            f"いまの枠を確定させて配信を止めます。") from e
                     print(f"! 配信枠の切り替えに失敗しました。"
                           f"次のティックでやり直します: {e}")
             if should_rebuild_on_rotation(rotated, last_built, now):
@@ -381,7 +415,7 @@ def _run_forever(exclude_categories: frozenset[str]) -> None:
                     proc = _spawn_ffmpeg(key)
     except (KeyboardInterrupt, ArchiveWindowExceeded) as e:
         print(f"! 配信を止めます: {e}")
-    except FfmpegRestartLimit as e:
+    except (FfmpegRestartLimit, RotationGaveUp) as e:
         print(f"✗ {e}")
     finally:
         proc.terminate()
