@@ -1,7 +1,60 @@
 # HANDOFF
 
-最終更新: 2026-09-10（セッション: **アナリティクスを全期間で調べ直した**。
-`docs/analytics-2026-09-10.md` を追加。**チャンネルへの操作・投稿は一切していない**）
+最終更新: 2026-09-10（セッション: **アナリティクスを全期間で調べ直し、その所見を
+実際に取り込んだ**。`docs/analytics-2026-09-10.md` を追加し、CLAUDE.md に
+「チャンネルの現在地」を置き、**分裂していた state を統合**し、
+`docs/daily-workflow.md` に朝の枠の埋め方を書いた。
+**チャンネルへの投稿・変更は一切していない**）
+
+## 今回やったこと（すべて `main` 済み・pytest 668 passed）
+
+1. **アナリティクスの全期間調査** → `docs/analytics-2026-09-10.md`
+2. **所見を CLAUDE.md に恒久化** → 「チャンネルの現在地 — 施策を提案する前に踏まえること」
+3. **分裂していた state を統合**（下記）
+4. **朝の枠が空く原因を特定し、手順を書き換えた** → `docs/daily-workflow.md`
+5. **冒頭の維持率を上げる設計書を書いた**（実装はしていない）
+   → `docs/superpowers/specs/2026-09-10-opening-retention-design.md`
+
+## ✅ state の分裂は解消した（旧「⚠ state がブランチ間で分裂している」）
+
+`main`（52件）と `claude/okinawa-governor-election-videos-d1ebd9`（58件）は
+**どちらも他方の上位集合ではなかった**。共通51キーは中身まで一致していたので
+**和集合59件**で解決した。`check_telop.py`・`run_election.py` の修正・
+`tests/test_election.py` も取り込んだ（commit `36818f5`）。
+
+**YouTube API と突き合わせて検証済み:**
+
+- 59件中58件は実在。**`2D_cpARVcw0` だけ存在しない**（known-issues 8番の既知の1件。
+  外す作業は未実施）
+- 予約中は **09/10 18:30 `Md3w6Qaqx5Y`** と **09/11 18:30 `R3SZbpIoI5U`** の2枠だけ
+- **`publish_at` を持たない private が8本チャンネル上に残っている**
+  （`BKwnK8HFczE` `LOYwJw6tBUo` `phur61vle8A` `-K_GQlJ4oR0` `BgIhdx43dSo`
+  `yHT9_jXuvlY` `wL43dLccqLg` `vvpSRwF072M`）。すべて公開済みの選挙動画と
+  タイトルが重複し、9/2 の 15:38〜16:16 に上がっている。**枠は塞いでいない**
+  （`taken_slots()` は `publish_at` のあるものだけ見る）。削除は取り消せないので保留
+
+## 朝(07:30)の枠が空く原因 — 特定済み
+
+`pending_slots` は過ぎた枠を遡って埋めない（`scripts/slots.py`）。
+**07:30 の枠を作れるのは 07:30 より前に走ったときだけ。18:30 は一日じゅう作れる。**
+自動実行は 2026-08-18 に削除済みで、セッションは日中〜夕方に立ち上がるので、
+**素の実行を続ける限り 07:30 は構造的に空く。**
+
+- 実測: 2026-08-20〜09-09 の42枠で**空いたのは 09/03・09/04・09/07 の 07:30 だけ**。
+  18:30 は1枠も空いていない
+- **歩留まりは原因ではない**（2026-09-10 実測: 採用ゲート 20件中14件通過、
+  最上位の通過候補は2番目）
+- **認証も無い**: `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `ant` プロファイルは
+  いずれも未設定（実測）。素の `run_daily.py` は `ScriptWriterUnavailable` で即停止する
+
+**→ 決めた手順: セッションを終える前に翌日分を作る。**
+
+```bash
+python scripts/run_daily.py --days-ahead 1 --limit 1   # 翌日 07:30
+python scripts/run_daily.py --days-ahead 1 --limit 1   # もう一度で翌日 18:30
+```
+
+**⚠ 9/11 の 07:30 はまだ空いている**（18:30 は `R3SZbpIoI5U` で予約済み）。
 
 ## 2026-09-10 に確定した数字（API 実測・`docs/analytics-2026-09-10.md`）
 
@@ -293,6 +346,10 @@ codec_name=aac   sample_rate=48000
 
 ## 次にやること
 
+0. **翌日の枠を埋める。** 9/11 の 07:30 が空いている（上記）。
+   題材は `yield_report.py --refresh` で見て `--only` で選ぶ。
+   台本は対話セッションが書いて `--script` で渡す（認証が無いので素では動かない）。
+
 1. **2026-09-12 以降に基準値と比べる。これが Task 1 の結論。**
 
    ```bash
@@ -336,6 +393,13 @@ codec_name=aac   sample_rate=48000
 9. **選挙が終わったら `scripts/election.py` / `run_election.py` / `tests/test_election.py` を消す。**
 
 10. `com.-youtube` の Google OAuth トークンを失効・再発行する（持ち越し）。
+
+11. **冒頭の維持率の A/B に着手するか決める。** 設計書は書いてある
+    （`docs/superpowers/specs/2026-09-10-opening-retention-design.md`）。
+    **1 の結果が出るまで着手しない。** ライブが通ればショートの優先度は下がる。
+
+12. **`publish_at` の無い private 8本を消すか決める。** 枠は塞いでいないので急がない。
+    削除は取り消せない。
 
 ## 触ってはいけないところ
 
