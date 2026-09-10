@@ -45,6 +45,11 @@ from scripts.script_writer import ScriptMismatch, load_script    # noqa: E402
 WORK = ROOT / "work"
 RECIPES = ROOT / "recipes"
 
+# 2026年沖縄県知事選の届け出者数（2026-08-27 告示時点で6人・過去最多）。
+# 説明文に書くために持っている。MANIFESTO_SOURCES に載っているのはこのうち
+# 2氏だけなので、**リンクの数を候補者数と読ませない**ためにここを明示する。
+CANDIDATE_COUNT = 6
+
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
@@ -84,9 +89,13 @@ def write_meta(workdir: Path, script, license_: dict, ev) -> None:
         "source_url": ev.source_url,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    others = "\n".join(
-        f"・{s.person}: {s.url}"
-        for s in election.MANIFESTO_SOURCES.values())
+    # 候補ごとに1行にまとめる。MANIFESTO_SOURCES は1人につき複数（要約ページと
+    # 政策集PDF）を持つので、そのまま並べると同じ人が2回出る。
+    by_person: dict[str, str] = {}
+    for s in election.MANIFESTO_SOURCES.values():
+        by_person.setdefault(s.person, s.url)
+    others = "\n".join(f"・{person}: {url}" for person, url in by_person.items())
+
     (workdir / "description.txt").write_text("\n".join([
         script.narration,
         "",
@@ -95,7 +104,12 @@ def write_meta(workdir: Path, script, license_: dict, ev) -> None:
         "",
         "2026年沖縄県知事選挙（2026年9月13日投開票）の候補者が公表している"
         "公約から、書かれている内容をそのまま紹介しています。",
-        "各候補の公約（公式サイト）:",
+        # **立候補者数を明記する。** ここに2人ぶんのリンクだけを置くと、
+        # 動画単体では「候補は2人」と読める。実際の届け出は6人
+        # （2026-08-27 告示・過去最多）なので、リンクが2人ぶんである理由
+        # ——公約の全文を公式サイトで公表しているのがこの2氏——まで書く。
+        f"この選挙には{CANDIDATE_COUNT}人が立候補しています。"
+        "この動画で扱うのは、公約の全文を公式サイトで公表している次の2氏です。",
         others,
         "",
         license_["attribution"],

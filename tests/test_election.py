@@ -129,3 +129,44 @@ def test_文字化けした抽出結果は一次資料に使わない():
 def test_日本語として読める資料は通る():
     ok = "沖縄県知事選挙に立候補している候補者が公表している政策です。" * 20
     assert election._assert_readable(ok, "https://example.invalid/x.html") == ok
+
+
+# ── 説明文（run_election.write_meta） ──────────────────────────────
+#
+# 説明文は動画ごとに1回だけ書かれ、投稿後は誰も読み返さない。ここが
+# 崩れても動画は普通に出来上がるので、テストで縛っていないと気づけない。
+
+def _description(tmp_path, monkeypatch):
+    """write_meta が書いた description.txt を読む。"""
+    from scripts import run_election
+
+    class _Script:
+        title, tags, narration = "題名", ["a", "b", "c"], "本文"
+
+    class _Ev:
+        source_url = election.MANIFESTO_SOURCES[KOJA].url
+        context = "古謝玄太 公約"
+
+    run_election.write_meta(tmp_path, _Script(), {"attribution": "画像: x"}, _Ev())
+    return (tmp_path / "description.txt").read_text(encoding="utf-8")
+
+
+def test_説明文は候補者を1人1行にする(tmp_path, monkeypatch):
+    # MANIFESTO_SOURCES は1人につき複数（要約ページと政策集PDF）を持つ。
+    # そのまま並べると同じ人が2回出て、何人が候補なのか読み取れなくなる。
+    from scripts import election as el
+
+    text = _description(tmp_path, monkeypatch)
+    for person in {s.person for s in el.MANIFESTO_SOURCES.values()}:
+        assert text.count(f"・{person}: ") == 1, f"{person} が1行になっていない"
+
+
+def test_説明文に届け出者数を書く(tmp_path, monkeypatch):
+    # 公式サイトのリンクが2人ぶんしか無いので、書かないと「候補は2人」と
+    # 読める。実際の届け出は6人（2026-08-27 告示）。
+    from scripts import run_election
+
+    text = _description(tmp_path, monkeypatch)
+    assert f"{run_election.CANDIDATE_COUNT}人が立候補" in text
+    assert run_election.CANDIDATE_COUNT > len(
+        {s.person for s in election.MANIFESTO_SOURCES.values()})

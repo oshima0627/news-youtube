@@ -1,5 +1,244 @@
 {
   "videos": {
+    "0767be0834d8": {
+      "youtube_video_id": "4pOyrwI3lJo",
+      "url": "https://www.youtube.com/watch?v=4pOyrwI3lJo",
+      "title": "公益通報者保護法の改正、施行までの1年6か月が問われる",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121714536X00820250602/66",
+      "publish_at": "2026-08-24T18:30:00+09:00"
+    },
+    "1405e44d769c": {
+      "youtube_video_id": "XuHs_x6lHSI",
+      "url": "https://www.youtube.com/watch?v=XuHs_x6lHSI",
+      "title": "国会で読み上げられた「福岡九区支部」の証言　2000万円は振り込まれていない",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121605261X00120241205/288",
+      "publish_at": "2026-08-20T07:30:00+09:00"
+    },
+    "177860b900a4": {
+      "youtube_video_id": "aSokL2axk3U",
+      "url": "https://www.youtube.com/watch?v=aSokL2axk3U",
+      "title": "「実質的な移民政策では」少子化対策と外国人受入れの交差点 国会質疑",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105206X00220260410/188",
+      "publish_at": "2026-08-14T18:30:00+09:00"
+    },
+    "1995d6dd4874": {
+      "youtube_video_id": "1j8f3nA-Xbo",
+      "url": "https://www.youtube.com/watch?v=1j8f3nA-Xbo",
+      "title": "能登半島地震で最大15万軒断水、水道の耐震適合率は約42%という現実",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121704601X01320250424/73",
+      "publish_at": "2026-08-22T18:30:00+09:00"
+    },
+    "1a01983b80ef": {
+      "youtube_video_id": "bhXSBA5dqMw",
+      "url": "https://www.youtube.com/watch?v=bhXSBA5dqMw",
+      "title": "拉致問題「中学生サミット」官房長官が語った若い世代への啓発",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105253X00220260602/5",
+      "publish_at": "2026-08-17T18:30:00+09:00"
+    },
+    "2066c0628fe1": {
+      "youtube_video_id": "R_dirwcTjqs",
+      "url": "https://www.youtube.com/watch?v=R_dirwcTjqs",
+      "title": "避難所に暑さの基準がない — 国会で示された「3倍」の数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114281X00420260608/58",
+      "publish_at": "2026-08-21T18:30:00+09:00"
+    },
+    "2bff28f8a7d7": {
+      "youtube_video_id": "MjkjrJVCN0w",
+      "url": "https://www.youtube.com/watch?v=MjkjrJVCN0w",
+      "title": "出生数67万人・出生率1.14 国会で示された「二つの少子化対策」",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105254X02320260604/16"
+    },
+    "3112f5c7acb9": {
+      "youtube_video_id": "XW392Sr9Zew",
+      "url": "https://www.youtube.com/watch?v=XW392Sr9Zew",
+      "title": "「攻めの農業＝輸出」でいいのか　参考人が国会で投げた問い",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115007X01520260714/53",
+      "publish_at": "2026-08-27T07:30:00+09:00"
+    },
+    "362e0055aeef": {
+      "youtube_video_id": "My5mRImj744",
+      "url": "https://www.youtube.com/watch?v=My5mRImj744",
+      "title": "相続税を払う人が4%台から10%台へ 基礎控除の引き下げで申告数は5万件から16万件に",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/101",
+      "publish_at": "2026-09-08T07:30:00+09:00"
+    },
+    "36fbed9483d9": {
+      "youtube_video_id": "yFMt61Dp6Is",
+      "url": "https://www.youtube.com/watch?v=yFMt61Dp6Is",
+      "title": "介護職の賃上げ「最大月1.9万円」臨時改定の中身を読む",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114260X01420260618/28",
+      "publish_at": "2026-08-25T18:30:00+09:00"
+    },
+    "469e4d4c4def": {
+      "youtube_video_id": "ucgAxCULa7Q",
+      "url": "https://www.youtube.com/watch?v=ucgAxCULa7Q",
+      "title": "国会でSNS年齢確認が議論に　事業者に求められる措置とは",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115104X01220260714/71",
+      "publish_at": "2026-08-23T18:30:00+09:00"
+    },
+    "55960aca7446": {
+      "youtube_video_id": "pVNNZZ4VKSA",
+      "url": "https://www.youtube.com/watch?v=pVNNZZ4VKSA",
+      "title": "詐欺被害1630億円 政府答弁が示す「なりすまし広告」対策の中身",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121714889X00820250415/68",
+      "publish_at": "2026-08-15T07:30:00+09:00"
+    },
+    "573f7b0e5bdf": {
+      "youtube_video_id": "EBnFdZpSwsc",
+      "url": "https://www.youtube.com/watch?v=EBnFdZpSwsc",
+      "title": "参政党が国会で示した「六十点から七十点」という法案評価の意味",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01720260623/204",
+      "publish_at": "2026-08-30T07:30:00+09:00"
+    },
+    "5a7d4d4cb723": {
+      "youtube_video_id": "WRe7-4HJ2gA",
+      "url": "https://www.youtube.com/watch?v=WRe7-4HJ2gA",
+      "title": "消費税5%への一律減税を要求 衆院予算委で問われた「公約」の行方",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01420260604/340",
+      "publish_at": "2026-08-18T07:30:00+09:00"
+    },
+    "5fc4fe62c4a6": {
+      "youtube_video_id": "z_jxJz-zIW0",
+      "url": "https://www.youtube.com/watch?v=z_jxJz-zIW0",
+      "title": "「支援件数はたった一件」国会で示された復興ファンドの実績とは",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121705379X00920250513/122",
+      "publish_at": "2026-08-15T18:30:00+09:00"
+    },
+    "658714edd620": {
+      "youtube_video_id": "Awg7xxgeVJ4",
+      "url": "https://www.youtube.com/watch?v=Awg7xxgeVJ4",
+      "title": "個人情報の漏えい1万7139件 うち2割は不正目的のおそれ 国会で示された数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115385X00820260708/55",
+      "publish_at": "2026-09-01T07:30:00+09:00"
+    },
+    "66c53b0162a8": {
+      "youtube_video_id": "NFjiJ0U54ZI",
+      "url": "https://www.youtube.com/watch?v=NFjiJ0U54ZI",
+      "title": "最低賃金が上がると働き控えが起きる？国会で指摘された「壁」の問題",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X00320260416/52",
+      "publish_at": "2026-08-28T07:30:00+09:00"
+    },
+    "6ee68e4f7e71": {
+      "youtube_video_id": "P8bhgdLNmjY",
+      "url": "https://www.youtube.com/watch?v=P8bhgdLNmjY",
+      "title": "「唯一の戦争被爆国として」予算委で問われた核廃絶の立場",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121905261X00420251111/139",
+      "publish_at": "2026-08-18T18:30:00+09:00"
+    },
+    "70d2a7819750": {
+      "youtube_video_id": "8639Yg7Ner0",
+      "url": "https://www.youtube.com/watch?v=8639Yg7Ner0",
+      "title": "年末調整で一人3万〜6万円の所得税減税 12月に何が起きるのか",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01720260727/118",
+      "publish_at": "2026-09-02T07:30:00+09:00"
+    },
+    "711a18f5e613": {
+      "youtube_video_id": "S5_IhLateiw",
+      "url": "https://www.youtube.com/watch?v=S5_IhLateiw",
+      "title": "防衛費GDP比2%＝11兆円、米は3.5%を要求 国会で並べられた二つの数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121915254X00420251106/23",
+      "publish_at": "2026-09-01T18:30:00+09:00"
+    },
+    "74f32ee23d89": {
+      "youtube_video_id": "RsfdxzLDdPE",
+      "url": "https://www.youtube.com/watch?v=RsfdxzLDdPE",
+      "title": "竹島問題は日韓だけの話じゃない 国会で示された「北朝鮮」の論点",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122113950X01420260618/76",
+      "publish_at": "2026-08-14T07:30:00+09:00"
+    },
+    "753f579e4eff": {
+      "youtube_video_id": "hQm4LqOv18o",
+      "url": "https://www.youtube.com/watch?v=hQm4LqOv18o",
+      "title": "副首都の候補地・大阪に南海トラフのリスク 国会で問われた「代替になるのか」",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X01420260715/22",
+      "publish_at": "2026-08-31T18:30:00+09:00"
+    },
+    "78ad48685a01": {
+      "youtube_video_id": "2D_cpARVcw0",
+      "url": "https://www.youtube.com/watch?v=2D_cpARVcw0",
+      "title": "消費税減税の前に知るべき「食料品は一律じゃない」G7の現実",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/78",
+      "publish_at": "2026-08-13T18:30:00+09:00"
+    },
+    "7ff46ac93fe1": {
+      "youtube_video_id": "veU-6dJhtR0",
+      "url": "https://www.youtube.com/watch?v=veU-6dJhtR0",
+      "title": "「死んだら靖国に祭るぞ」国会で語られた参拝問題の核心",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/121704260X00520250326/52",
+      "publish_at": "2026-08-17T07:30:00+09:00"
+    },
     "80378ef09649": {
       "youtube_video_id": "n6T9cs5LEJQ",
       "url": "https://www.youtube.com/watch?v=n6T9cs5LEJQ",
@@ -9,6 +248,46 @@
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/78",
       "publish_at": "2026-08-12T19:00:00+09:00"
+    },
+    "80d147a13990": {
+      "youtube_video_id": "TWxWGgXFYAw",
+      "url": "https://www.youtube.com/watch?v=TWxWGgXFYAw",
+      "title": "「網羅的に金融資産を把握する方法がありません」政府答弁が示す限界",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122104260X00620260422/279",
+      "publish_at": "2026-08-19T18:30:00+09:00"
+    },
+    "8b000ae446da": {
+      "youtube_video_id": "8ebRhoO41tM",
+      "url": "https://www.youtube.com/watch?v=8ebRhoO41tM",
+      "title": "日本とベルギー、外交160周年 国会で語られた「与野党を問わない使命」",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122103968X01020260513/27",
+      "publish_at": "2026-08-27T18:30:00+09:00"
+    },
+    "8dd08514e4a5": {
+      "youtube_video_id": "RMyRIInAXRw",
+      "url": "https://www.youtube.com/watch?v=RMyRIInAXRw",
+      "title": "「みんな忘れている」再エネ賦課金の出発点は月88円だった",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115261X01220260427/81",
+      "publish_at": "2026-08-26T07:30:00+09:00"
+    },
+    "8de293bc3287": {
+      "youtube_video_id": "G_eRUPj6WlQ",
+      "url": "https://www.youtube.com/watch?v=G_eRUPj6WlQ",
+      "title": "参院外交防衛委で問われた「100人リストアップ」報道　防衛省の回答は",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122113950X00720260512/62",
+      "publish_at": "2026-08-19T07:30:00+09:00"
     },
     "93cc4ceeb120": {
       "youtube_video_id": "OvFoE-YgMqY",
@@ -30,283 +309,15 @@
       "source_url": "https://kokkai.ndl.go.jp/txt/121314370X01320240514/78",
       "publish_at": "2026-08-13T18:30:00+09:00"
     },
-    "78ad48685a01": {
-      "youtube_video_id": "2D_cpARVcw0",
-      "url": "https://www.youtube.com/watch?v=2D_cpARVcw0",
-      "title": "消費税減税の前に知るべき「食料品は一律じゃない」G7の現実",
+    "97f8c95f7955": {
+      "youtube_video_id": "xNkyuxioRJk",
+      "url": "https://www.youtube.com/watch?v=xNkyuxioRJk",
+      "title": "ガソリン価格「G7で最も安い水準」答弁の意味を読み解く",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/78",
-      "publish_at": "2026-08-13T18:30:00+09:00"
-    },
-    "b3f6f9e5cd12": {
-      "youtube_video_id": "Qe7ZMj1U-kc",
-      "url": "https://www.youtube.com/watch?v=Qe7ZMj1U-kc",
-      "title": "在留外国人413万人 過去最多 国会で示された「秩序ある共生」の中身",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/6",
-      "publish_at": "2026-08-16T07:30:00+09:00"
-    },
-    "8b000ae446da": {
-      "youtube_video_id": "8ebRhoO41tM",
-      "url": "https://www.youtube.com/watch?v=8ebRhoO41tM",
-      "title": "日本とベルギー、外交160周年 国会で語られた「与野党を問わない使命」",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122103968X01020260513/27",
-      "publish_at": "2026-08-27T18:30:00+09:00"
-    },
-    "177860b900a4": {
-      "youtube_video_id": "aSokL2axk3U",
-      "url": "https://www.youtube.com/watch?v=aSokL2axk3U",
-      "title": "「実質的な移民政策では」少子化対策と外国人受入れの交差点 国会質疑",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105206X00220260410/188",
-      "publish_at": "2026-08-14T18:30:00+09:00"
-    },
-    "55960aca7446": {
-      "youtube_video_id": "pVNNZZ4VKSA",
-      "url": "https://www.youtube.com/watch?v=pVNNZZ4VKSA",
-      "title": "詐欺被害1630億円 政府答弁が示す「なりすまし広告」対策の中身",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121714889X00820250415/68",
-      "publish_at": "2026-08-15T07:30:00+09:00"
-    },
-    "5fc4fe62c4a6": {
-      "youtube_video_id": "z_jxJz-zIW0",
-      "url": "https://www.youtube.com/watch?v=z_jxJz-zIW0",
-      "title": "「支援件数はたった一件」国会で示された復興ファンドの実績とは",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121705379X00920250513/122",
-      "publish_at": "2026-08-15T18:30:00+09:00"
-    },
-    "74f32ee23d89": {
-      "youtube_video_id": "RsfdxzLDdPE",
-      "url": "https://www.youtube.com/watch?v=RsfdxzLDdPE",
-      "title": "竹島問題は日韓だけの話じゃない 国会で示された「北朝鮮」の論点",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122113950X01420260618/76",
-      "publish_at": "2026-08-14T07:30:00+09:00"
-    },
-    "b90ca2020467": {
-      "youtube_video_id": "C5_poVw8hlM",
-      "url": "https://www.youtube.com/watch?v=C5_poVw8hlM",
-      "title": "食料品の消費税1%で減収4.3兆円 片山財務相が示した数字の意味",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01520260622/110",
-      "publish_at": "2026-08-16T18:30:00+09:00"
-    },
-    "7ff46ac93fe1": {
-      "youtube_video_id": "veU-6dJhtR0",
-      "url": "https://www.youtube.com/watch?v=veU-6dJhtR0",
-      "title": "「死んだら靖国に祭るぞ」国会で語られた参拝問題の核心",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121704260X00520250326/52",
-      "publish_at": "2026-08-17T07:30:00+09:00"
-    },
-    "b8dd238da579": {
-      "youtube_video_id": "zC8OJmUT9Us",
-      "url": "https://www.youtube.com/watch?v=zC8OJmUT9Us",
-      "title": "憲法審査会の指摘 臨時国会は20日以内に／高裁3件の違憲判決をどう見るか",
-      "privacy_status": "public",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121604183X00120241219/11"
-    },
-    "5a7d4d4cb723": {
-      "youtube_video_id": "WRe7-4HJ2gA",
-      "url": "https://www.youtube.com/watch?v=WRe7-4HJ2gA",
-      "title": "消費税5%への一律減税を要求 衆院予算委で問われた「公約」の行方",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01420260604/340",
-      "publish_at": "2026-08-18T07:30:00+09:00"
-    },
-    "1a01983b80ef": {
-      "youtube_video_id": "bhXSBA5dqMw",
-      "url": "https://www.youtube.com/watch?v=bhXSBA5dqMw",
-      "title": "拉致問題「中学生サミット」官房長官が語った若い世代への啓発",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105253X00220260602/5",
-      "publish_at": "2026-08-17T18:30:00+09:00"
-    },
-    "6ee68e4f7e71": {
-      "youtube_video_id": "P8bhgdLNmjY",
-      "url": "https://www.youtube.com/watch?v=P8bhgdLNmjY",
-      "title": "「唯一の戦争被爆国として」予算委で問われた核廃絶の立場",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121905261X00420251111/139",
-      "publish_at": "2026-08-18T18:30:00+09:00"
-    },
-    "8de293bc3287": {
-      "youtube_video_id": "G_eRUPj6WlQ",
-      "url": "https://www.youtube.com/watch?v=G_eRUPj6WlQ",
-      "title": "参院外交防衛委で問われた「100人リストアップ」報道　防衛省の回答は",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122113950X00720260512/62",
-      "publish_at": "2026-08-19T07:30:00+09:00"
-    },
-    "80d147a13990": {
-      "youtube_video_id": "TWxWGgXFYAw",
-      "url": "https://www.youtube.com/watch?v=TWxWGgXFYAw",
-      "title": "「網羅的に金融資産を把握する方法がありません」政府答弁が示す限界",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122104260X00620260422/279",
-      "publish_at": "2026-08-19T18:30:00+09:00"
-    },
-    "d64208f5c316": {
-      "youtube_video_id": "U8t5KlxP9xo",
-      "url": "https://www.youtube.com/watch?v=U8t5KlxP9xo",
-      "title": "被爆者団体の声は一つではない 国会で示された二つの立場",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121903968X00220251128/10",
-      "publish_at": "2026-08-21T07:30:00+09:00"
-    },
-    "1405e44d769c": {
-      "youtube_video_id": "XuHs_x6lHSI",
-      "url": "https://www.youtube.com/watch?v=XuHs_x6lHSI",
-      "title": "国会で読み上げられた「福岡九区支部」の証言　2000万円は振り込まれていない",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121605261X00120241205/288",
-      "publish_at": "2026-08-20T07:30:00+09:00"
-    },
-    "e9744267b439": {
-      "youtube_video_id": "Ql_ylXmaqBM",
-      "url": "https://www.youtube.com/watch?v=Ql_ylXmaqBM",
-      "title": "「足下の一致指数は横ばい」国会で問われた景気動向指数と経済対策",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121204889X00220231108/169",
-      "publish_at": "2026-08-20T18:30:00+09:00"
-    },
-    "2bff28f8a7d7": {
-      "youtube_video_id": "MjkjrJVCN0w",
-      "url": "https://www.youtube.com/watch?v=MjkjrJVCN0w",
-      "title": "出生数67万人・出生率1.14 国会で示された「二つの少子化対策」",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105254X02320260604/16"
-    },
-    "2066c0628fe1": {
-      "youtube_video_id": "R_dirwcTjqs",
-      "url": "https://www.youtube.com/watch?v=R_dirwcTjqs",
-      "title": "避難所に暑さの基準がない — 国会で示された「3倍」の数字",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114281X00420260608/58",
-      "publish_at": "2026-08-21T18:30:00+09:00"
-    },
-    "long-e0c09d729978": {
-      "youtube_video_id": "UqjB--sNTKk",
-      "url": "https://www.youtube.com/watch?v=UqjB--sNTKk",
-      "title": "国会質疑を解説｜議長就任に一千万円・日本はICC最大の拠出国・熊本地震十年",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122104260X01920260715/136",
-      "publish_at": "2026-08-20T18:00:00+09:00"
-    },
-    "c1daab3d1773": {
-      "youtube_video_id": "aK8tBgckL9k",
-      "url": "https://www.youtube.com/watch?v=aK8tBgckL9k",
-      "title": "七戸に一戸が空き家 国会で示された「900万戸」の意味",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114319X00320260324/157",
-      "publish_at": "2026-08-25T07:30:00+09:00"
-    },
-    "36fbed9483d9": {
-      "youtube_video_id": "yFMt61Dp6Is",
-      "url": "https://www.youtube.com/watch?v=yFMt61Dp6Is",
-      "title": "介護職の賃上げ「最大月1.9万円」臨時改定の中身を読む",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114260X01420260618/28",
-      "publish_at": "2026-08-25T18:30:00+09:00"
-    },
-    "8dd08514e4a5": {
-      "youtube_video_id": "RMyRIInAXRw",
-      "url": "https://www.youtube.com/watch?v=RMyRIInAXRw",
-      "title": "「みんな忘れている」再エネ賦課金の出発点は月88円だった",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115261X01220260427/81",
-      "publish_at": "2026-08-26T07:30:00+09:00"
-    },
-    "de37ba93d61b": {
-      "youtube_video_id": "CXdd3ODNGqk",
-      "url": "https://www.youtube.com/watch?v=CXdd3ODNGqk",
-      "title": "レアアース輸出規制の強化 国会で「即刻撤回されるべき」と指摘",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115254X00320260225/5",
-      "publish_at": "2026-08-26T18:30:00+09:00"
-    },
-    "3112f5c7acb9": {
-      "youtube_video_id": "XW392Sr9Zew",
-      "url": "https://www.youtube.com/watch?v=XW392Sr9Zew",
-      "title": "「攻めの農業＝輸出」でいいのか　参考人が国会で投げた問い",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115007X01520260714/53",
-      "publish_at": "2026-08-27T07:30:00+09:00"
-    },
-    "b683867f6dd5": {
-      "youtube_video_id": "d0Ao4COVCQ4",
-      "url": "https://www.youtube.com/watch?v=d0Ao4COVCQ4",
-      "title": "茂木外相「ラブロフ外相と八時間交渉」北方領土、交渉再開に言及",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122103968X01420260715/59",
-      "publish_at": "2026-08-22T07:30:00+09:00"
-    },
-    "1995d6dd4874": {
-      "youtube_video_id": "1j8f3nA-Xbo",
-      "url": "https://www.youtube.com/watch?v=1j8f3nA-Xbo",
-      "title": "能登半島地震で最大15万軒断水、水道の耐震適合率は約42%という現実",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121704601X01320250424/73",
-      "publish_at": "2026-08-22T18:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01420260604/11",
+      "publish_at": "2026-08-28T18:30:00+09:00"
     },
     "a44d75ff7518": {
       "youtube_video_id": "nkmR2E-BZIs",
@@ -318,16 +329,6 @@
       "source_url": "https://kokkai.ndl.go.jp/txt/122115104X01120260616/73",
       "publish_at": "2026-08-23T07:30:00+09:00"
     },
-    "469e4d4c4def": {
-      "youtube_video_id": "ucgAxCULa7Q",
-      "url": "https://www.youtube.com/watch?v=ucgAxCULa7Q",
-      "title": "国会でSNS年齢確認が議論に　事業者に求められる措置とは",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115104X01220260714/71",
-      "publish_at": "2026-08-23T18:30:00+09:00"
-    },
     "a864c996d135": {
       "youtube_video_id": "fW8ji4CAq9k",
       "url": "https://www.youtube.com/watch?v=fW8ji4CAq9k",
@@ -338,65 +339,44 @@
       "source_url": "https://kokkai.ndl.go.jp/txt/122113950X01620260716/76",
       "publish_at": "2026-08-24T07:30:00+09:00"
     },
-    "0767be0834d8": {
-      "youtube_video_id": "4pOyrwI3lJo",
-      "url": "https://www.youtube.com/watch?v=4pOyrwI3lJo",
-      "title": "公益通報者保護法の改正、施行までの1年6か月が問われる",
+    "b3f6f9e5cd12": {
+      "youtube_video_id": "Qe7ZMj1U-kc",
+      "url": "https://www.youtube.com/watch?v=Qe7ZMj1U-kc",
+      "title": "在留外国人413万人 過去最多 国会で示された「秩序ある共生」の中身",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121714536X00820250602/66",
-      "publish_at": "2026-08-24T18:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/6",
+      "publish_at": "2026-08-16T07:30:00+09:00"
     },
-    "573f7b0e5bdf": {
-      "youtube_video_id": "EBnFdZpSwsc",
-      "url": "https://www.youtube.com/watch?v=EBnFdZpSwsc",
-      "title": "参政党が国会で示した「六十点から七十点」という法案評価の意味",
+    "b683867f6dd5": {
+      "youtube_video_id": "d0Ao4COVCQ4",
+      "url": "https://www.youtube.com/watch?v=d0Ao4COVCQ4",
+      "title": "茂木外相「ラブロフ外相と八時間交渉」北方領土、交渉再開に言及",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01720260623/204",
-      "publish_at": "2026-08-30T07:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122103968X01420260715/59",
+      "publish_at": "2026-08-22T07:30:00+09:00"
     },
-    "66c53b0162a8": {
-      "youtube_video_id": "NFjiJ0U54ZI",
-      "url": "https://www.youtube.com/watch?v=NFjiJ0U54ZI",
-      "title": "最低賃金が上がると働き控えが起きる？国会で指摘された「壁」の問題",
-      "privacy_status": "private",
+    "b8dd238da579": {
+      "youtube_video_id": "zC8OJmUT9Us",
+      "url": "https://www.youtube.com/watch?v=zC8OJmUT9Us",
+      "title": "憲法審査会の指摘 臨時国会は20日以内に／高裁3件の違憲判決をどう見るか",
+      "privacy_status": "public",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X00320260416/52",
-      "publish_at": "2026-08-28T07:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/121604183X00120241219/11"
     },
-    "97f8c95f7955": {
-      "youtube_video_id": "xNkyuxioRJk",
-      "url": "https://www.youtube.com/watch?v=xNkyuxioRJk",
-      "title": "ガソリン価格「G7で最も安い水準」答弁の意味を読み解く",
+    "b90ca2020467": {
+      "youtube_video_id": "C5_poVw8hlM",
+      "url": "https://www.youtube.com/watch?v=C5_poVw8hlM",
+      "title": "食料品の消費税1%で減収4.3兆円 片山財務相が示した数字の意味",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01420260604/11",
-      "publish_at": "2026-08-28T18:30:00+09:00"
-    },
-    "fb6785907560": {
-      "youtube_video_id": "hMJkj8UMZjg",
-      "url": "https://www.youtube.com/watch?v=hMJkj8UMZjg",
-      "title": "「四人に一人が奨学金を返済中」国会で示された若者の現実",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X00520260508/112",
-      "publish_at": "2026-08-29T07:30:00+09:00"
-    },
-    "cdd7c8b50729": {
-      "youtube_video_id": "-4cbnhI5wVA",
-      "url": "https://www.youtube.com/watch?v=-4cbnhI5wVA",
-      "title": "出産費用の無償化、産科の4割赤字という前提が問われた国会質疑",
-      "privacy_status": "private",
-      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
-      "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114260X00720260521/279",
-      "publish_at": "2026-08-29T18:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01520260622/110",
+      "publish_at": "2026-08-16T18:30:00+09:00"
     },
     "c099195dc5e4": {
       "youtube_video_id": "8zGOoD1GhUQ",
@@ -408,55 +388,55 @@
       "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/103",
       "publish_at": "2026-08-30T18:30:00+09:00"
     },
-    "f62b2d7542d7": {
-      "youtube_video_id": "myjKRuLTmXw",
-      "url": "https://www.youtube.com/watch?v=myjKRuLTmXw",
-      "title": "教員不足3827人・採用倍率2.9倍 国会で並べられた教育現場の数字",
+    "c1daab3d1773": {
+      "youtube_video_id": "aK8tBgckL9k",
+      "url": "https://www.youtube.com/watch?v=aK8tBgckL9k",
+      "title": "七戸に一戸が空き家 国会で示された「900万戸」の意味",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00520260527/133",
-      "publish_at": "2026-08-31T07:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114319X00320260324/157",
+      "publish_at": "2026-08-25T07:30:00+09:00"
     },
-    "753f579e4eff": {
-      "youtube_video_id": "hQm4LqOv18o",
-      "url": "https://www.youtube.com/watch?v=hQm4LqOv18o",
-      "title": "副首都の候補地・大阪に南海トラフのリスク 国会で問われた「代替になるのか」",
+    "cdd7c8b50729": {
+      "youtube_video_id": "-4cbnhI5wVA",
+      "url": "https://www.youtube.com/watch?v=-4cbnhI5wVA",
+      "title": "出産費用の無償化、産科の4割赤字という前提が問われた国会質疑",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X01420260715/22",
-      "publish_at": "2026-08-31T18:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114260X00720260521/279",
+      "publish_at": "2026-08-29T18:30:00+09:00"
     },
-    "658714edd620": {
-      "youtube_video_id": "Awg7xxgeVJ4",
-      "url": "https://www.youtube.com/watch?v=Awg7xxgeVJ4",
-      "title": "個人情報の漏えい1万7139件 うち2割は不正目的のおそれ 国会で示された数字",
+    "d64208f5c316": {
+      "youtube_video_id": "U8t5KlxP9xo",
+      "url": "https://www.youtube.com/watch?v=U8t5KlxP9xo",
+      "title": "被爆者団体の声は一つではない 国会で示された二つの立場",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122115385X00820260708/55",
-      "publish_at": "2026-09-01T07:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/121903968X00220251128/10",
+      "publish_at": "2026-08-21T07:30:00+09:00"
     },
-    "711a18f5e613": {
-      "youtube_video_id": "S5_IhLateiw",
-      "url": "https://www.youtube.com/watch?v=S5_IhLateiw",
-      "title": "防衛費GDP比2%＝11兆円、米は3.5%を要求 国会で並べられた二つの数字",
+    "de37ba93d61b": {
+      "youtube_video_id": "CXdd3ODNGqk",
+      "url": "https://www.youtube.com/watch?v=CXdd3ODNGqk",
+      "title": "レアアース輸出規制の強化 国会で「即刻撤回されるべき」と指摘",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/121915254X00420251106/23",
-      "publish_at": "2026-09-01T18:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/122115254X00320260225/5",
+      "publish_at": "2026-08-26T18:30:00+09:00"
     },
-    "70d2a7819750": {
-      "youtube_video_id": "8639Yg7Ner0",
-      "url": "https://www.youtube.com/watch?v=8639Yg7Ner0",
-      "title": "年末調整で一人3万〜6万円の所得税減税 12月に何が起きるのか",
+    "e9744267b439": {
+      "youtube_video_id": "Ql_ylXmaqBM",
+      "url": "https://www.youtube.com/watch?v=Ql_ylXmaqBM",
+      "title": "「足下の一致指数は横ばい」国会で問われた景気動向指数と経済対策",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01720260727/118",
-      "publish_at": "2026-09-02T07:30:00+09:00"
+      "source_url": "https://kokkai.ndl.go.jp/txt/121204889X00220231108/169",
+      "publish_at": "2026-08-20T18:30:00+09:00"
     },
     "election-koja-09021830": {
       "youtube_video_id": "s0H-HHUiUfI",
@@ -468,15 +448,25 @@
       "source_url": "https://kojagenta.com/manifest/",
       "publish_at": "2026-09-02T18:30:00+09:00"
     },
-    "election-tamaki-09031830": {
-      "youtube_video_id": "VqhHb3TfAgg",
-      "url": "https://www.youtube.com/watch?v=VqhHb3TfAgg",
-      "title": "玉城デニー氏の政策 7つの柱と鉄軌道 戦後100年に向けた交通の抜本改革",
+    "election-koja-detail-09051830": {
+      "youtube_video_id": "TXa3-6tCvkk",
+      "url": "https://www.youtube.com/watch?v=TXa3-6tCvkk",
+      "title": "古謝玄太氏の120の政策を読む 食料品の消費税ゼロ・保険料引き下げ・給食費無償化",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://tamakidenny.com/policy2026/",
-      "publish_at": "2026-09-03T18:30:00+09:00"
+      "source_url": "https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
+      "publish_at": "2026-09-05T18:30:00+09:00"
+    },
+    "election-koja-health-09101830": {
+      "youtube_video_id": "Md3w6Qaqx5Y",
+      "url": "https://www.youtube.com/watch?v=Md3w6Qaqx5Y",
+      "title": "古謝玄太氏の健康長寿11項目 北部基幹病院の早期整備と西普天間の国際医療拠点",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
+      "publish_at": "2026-09-10T18:30:00+09:00"
     },
     "election-koja-numbers-09041830": {
       "youtube_video_id": "Ut919N6NctI",
@@ -488,15 +478,35 @@
       "source_url": "https://kojagenta.com/manifest/",
       "publish_at": "2026-09-04T18:30:00+09:00"
     },
-    "election-koja-detail-09051830": {
-      "youtube_video_id": "TXa3-6tCvkk",
-      "url": "https://www.youtube.com/watch?v=TXa3-6tCvkk",
-      "title": "古謝玄太氏の120の政策を読む 食料品の消費税ゼロ・保険料引き下げ・給食費無償化",
+    "election-koja-peace-09060730": {
+      "youtube_video_id": "w0UTt2LJc3s",
+      "url": "https://www.youtube.com/watch?v=w0UTt2LJc3s",
+      "title": "古謝玄太氏の基地政策9項目 辺野古移設を容認・南西シフトは丁寧な説明を政府に求める",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
-      "publish_at": "2026-09-05T18:30:00+09:00"
+      "publish_at": "2026-09-06T07:30:00+09:00"
+    },
+    "election-koja-traffic-09071830": {
+      "youtube_video_id": "RhOoYz4TrpE",
+      "url": "https://www.youtube.com/watch?v=RhOoYz4TrpE",
+      "title": "古謝玄太氏のインフラ13項目「沖縄移動革命」 鉄軌道・BRT・ゆいレール3両化",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kojagenta.com/wp-content/themes/kojagenta_2607/assets/img/manifest/%E6%B2%96%E7%B8%84%E3%82%92%E5%89%8D%E3%81%AB%E9%80%B2%E3%82%81%E3%82%8B120%E3%81%AE%E6%94%BF%E7%AD%96.pdf",
+      "publish_at": "2026-09-07T18:30:00+09:00"
+    },
+    "election-tamaki-09031830": {
+      "youtube_video_id": "VqhHb3TfAgg",
+      "url": "https://www.youtube.com/watch?v=VqhHb3TfAgg",
+      "title": "玉城デニー氏の政策 7つの柱と鉄軌道 戦後100年に向けた交通の抜本改革",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-03T18:30:00+09:00"
     },
     "election-tamaki-detail-09061830": {
       "youtube_video_id": "L2hB5naZk5o",
@@ -508,15 +518,75 @@
       "source_url": "https://tamakidenny.com/policy2026/",
       "publish_at": "2026-09-06T18:30:00+09:00"
     },
-    "362e0055aeef": {
-      "youtube_video_id": "My5mRImj744",
-      "url": "https://www.youtube.com/watch?v=My5mRImj744",
-      "title": "相続税を払う人が4%台から10%台へ 基礎控除の引き下げで申告数は5万件から16万件に",
+    "election-tamaki-economy-09081830": {
+      "youtube_video_id": "OfJk7NWKXTU",
+      "url": "https://www.youtube.com/watch?v=OfJk7NWKXTU",
+      "title": "玉城デニー氏の経済政策57項目「ザル経済からの脱却」 観光11項目・農林水産9項目",
       "privacy_status": "private",
       "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
       "channel_title": "日本の最新ニュースまるわかり",
-      "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/101",
-      "publish_at": "2026-09-08T07:30:00+09:00"
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-08T18:30:00+09:00"
+    },
+    "election-tamaki-energy-09111830": {
+      "youtube_video_id": "R3SZbpIoI5U",
+      "url": "https://www.youtube.com/watch?v=R3SZbpIoI5U",
+      "title": "玉城デニー氏のエネルギー政策16項目 2050年の脱炭素化とペロブスカイト太陽電池",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-11T18:30:00+09:00"
+    },
+    "election-tamaki-islands-09091830": {
+      "youtube_video_id": "mxfqaTDzAYw",
+      "url": "https://www.youtube.com/watch?v=mxfqaTDzAYw",
+      "title": "玉城デニー氏の離島政策25項目 通院の交通費支援・航空路の負担軽減・遠隔医療",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-09T18:30:00+09:00"
+    },
+    "election-tamaki-peace-09050730": {
+      "youtube_video_id": "nhEm9sGFMuw",
+      "url": "https://www.youtube.com/watch?v=nhEm9sGFMuw",
+      "title": "玉城デニー氏の平和政策35項目 辺野古反対・地位協定の抜本見直し・那覇軍港の先行返還",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://tamakidenny.com/policy2026/",
+      "publish_at": "2026-09-05T07:30:00+09:00"
+    },
+    "f62b2d7542d7": {
+      "youtube_video_id": "myjKRuLTmXw",
+      "url": "https://www.youtube.com/watch?v=myjKRuLTmXw",
+      "title": "教員不足3827人・採用倍率2.9倍 国会で並べられた教育現場の数字",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00520260527/133",
+      "publish_at": "2026-08-31T07:30:00+09:00"
+    },
+    "fb6785907560": {
+      "youtube_video_id": "hMJkj8UMZjg",
+      "url": "https://www.youtube.com/watch?v=hMJkj8UMZjg",
+      "title": "「四人に一人が奨学金を返済中」国会で示された若者の現実",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122105367X00520260508/112",
+      "publish_at": "2026-08-29T07:30:00+09:00"
+    },
+    "long-e0c09d729978": {
+      "youtube_video_id": "UqjB--sNTKk",
+      "url": "https://www.youtube.com/watch?v=UqjB--sNTKk",
+      "title": "国会質疑を解説｜議長就任に一千万円・日本はICC最大の拠出国・熊本地震十年",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122104260X01920260715/136",
+      "publish_at": "2026-08-20T18:00:00+09:00"
     }
   }
 }
