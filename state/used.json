@@ -1,45 +1,5 @@
 [
   {
-    "date": "2026-08-27",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122115206X01120260528/103",
-    "keywords": [
-      "手数料",
-      "査証"
-    ]
-  },
-  {
-    "date": "2026-08-27",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00520260527/133",
-    "keywords": [
-      "不足",
-      "教員"
-    ]
-  },
-  {
-    "date": "2026-08-27",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122105367X01420260715/22",
-    "keywords": [
-      "副首都",
-      "大阪"
-    ]
-  },
-  {
-    "date": "2026-08-27",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122115385X00820260708/55",
-    "keywords": [
-      "個人情報",
-      "漏えい"
-    ]
-  },
-  {
-    "date": "2026-08-27",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121915254X00420251106/23",
-    "keywords": [
-      "国内総生産",
-      "防衛費"
-    ]
-  },
-  {
     "date": "2026-09-07",
     "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/101",
     "keywords": [
@@ -54,6 +14,114 @@
       "働き控え",
       "就業調整",
       "年収の壁"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121704260X02220250528/50",
+    "keywords": [
+      "千十六円",
+      "短時間労働者",
+      "賃金要件"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121715254X02420250604/21",
+    "keywords": [
+      "二十三年",
+      "企業規模要件",
+      "十月"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122104889X02520260710/178",
+    "keywords": [
+      "カスハラ",
+      "事業主",
+      "措置義務"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121705367X00620250408/37",
+    "keywords": [
+      "改正",
+      "給付",
+      "育児休業"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X01920250610/20",
+    "keywords": [
+      "七十五万円",
+      "上限",
+      "標準報酬月額"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121704260X02620250618/20",
+    "keywords": [
+      "マクロ経済スライド",
+      "基礎年金",
+      "底上げ"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121715254X02420250604/17",
+    "keywords": [
+      "女性",
+      "就業抑制",
+      "第三号被保険者"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01020260312/260",
+    "keywords": [
+      "児童手当",
+      "所得制限",
+      "撤廃"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122105261X01020260312/113",
+    "keywords": [
+      "所得制限",
+      "無償化",
+      "高校"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714889X00220250313/238",
+    "keywords": [
+      "こども誰でも通園",
+      "時間",
+      "試行"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/244",
+    "keywords": [
+      "労働時間要件",
+      "週二十時間",
+      "適用拡大"
+    ]
+  },
+  {
+    "date": "2026-09-14",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122114260X01020260602/43",
+    "keywords": [
+      "全国加重平均",
+      "六十六円",
+      "最低賃金"
     ]
   }
 ]
