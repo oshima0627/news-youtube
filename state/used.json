@@ -1,13 +1,5 @@
 [
   {
-    "date": "2026-09-07",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122114370X01120260616/101",
-    "keywords": [
-      "基礎控除",
-      "相続税"
-    ]
-  },
-  {
     "date": "2026-09-10",
     "source_url": "https://kokkai.ndl.go.jp/txt/121905261X00720251210/116",
     "keywords": [
@@ -166,6 +158,15 @@
     "keywords": [
       "令和八年",
       "子ども・子育て支援金"
+    ]
+  },
+  {
+    "date": "2026-09-22",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121705124X01720250618/132",
+    "keywords": [
+      "扶養",
+      "改正",
+      "特定親族特別控除"
     ]
   }
 ]
