@@ -123,5 +123,41 @@
       "六十六円",
       "最低賃金"
     ]
+  },
+  {
+    "date": "2026-09-18",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/119",
+    "keywords": [
+      "三年以内",
+      "撤廃",
+      "賃金要件"
+    ]
+  },
+  {
+    "date": "2026-09-18",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121715254X02720250613/36",
+    "keywords": [
+      "令和十年",
+      "週十時間",
+      "雇用保険"
+    ]
+  },
+  {
+    "date": "2026-09-18",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/124",
+    "keywords": [
+      "七十五万",
+      "上限",
+      "標準報酬"
+    ]
+  },
+  {
+    "date": "2026-09-21",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00120260511/278",
+    "keywords": [
+      "付加税",
+      "令和九年",
+      "防衛特別所得税"
+    ]
   }
 ]

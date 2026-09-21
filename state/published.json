@@ -727,6 +727,26 @@
       "channel_title": "日本の最新ニュースまるわかり",
       "source_url": "https://kokkai.ndl.go.jp/txt/122114260X01020260602/43",
       "publish_at": "2026-09-20T18:30:00+09:00"
+    },
+    "long-shakaihoken-20260918": {
+      "youtube_video_id": "fVnBEOc5KtY",
+      "url": "https://www.youtube.com/watch?v=fVnBEOc5KtY",
+      "title": "社会保険の壁 賃金要件は3年以内撤廃 企業規模と週20時間も変わる",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": null,
+      "publish_at": "2026-09-18T18:00:00+09:00"
+    },
+    "ec0d964e2a6a": {
+      "youtube_video_id": "qqwdEWJSDDc",
+      "url": "https://www.youtube.com/watch?v=qqwdEWJSDDc",
+      "title": "防衛特別所得税 令和九年一月から所得税の納税者に税率一％",
+      "privacy_status": "private",
+      "channel_id": "UCYHTfHJOoETzvpx-VZlUTng",
+      "channel_title": "日本の最新ニュースまるわかり",
+      "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00120260511/278",
+      "publish_at": "2026-09-21T07:30:00+09:00"
     }
   }
 }
