@@ -1,14 +1,5 @@
 [
   {
-    "date": "2026-09-10",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121905261X00720251210/116",
-    "keywords": [
-      "働き控え",
-      "就業調整",
-      "年収の壁"
-    ]
-  },
-  {
     "date": "2026-09-14",
     "source_url": "https://kokkai.ndl.go.jp/txt/121704260X02220250528/50",
     "keywords": [
@@ -184,6 +175,14 @@
     "keywords": [
       "令和七年",
       "育児時短就業給付"
+    ]
+  },
+  {
+    "date": "2026-09-25",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/18",
+    "keywords": [
+      "在職老齢年金",
+      "基準額"
     ]
   }
 ]
