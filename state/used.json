@@ -1,32 +1,5 @@
 [
   {
-    "date": "2026-09-18",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/119",
-    "keywords": [
-      "三年以内",
-      "撤廃",
-      "賃金要件"
-    ]
-  },
-  {
-    "date": "2026-09-18",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121715254X02720250613/36",
-    "keywords": [
-      "令和十年",
-      "週十時間",
-      "雇用保険"
-    ]
-  },
-  {
-    "date": "2026-09-18",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121714260X02120250612/124",
-    "keywords": [
-      "七十五万",
-      "上限",
-      "標準報酬"
-    ]
-  },
-  {
     "date": "2026-09-21",
     "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00120260511/278",
     "keywords": [
@@ -203,6 +176,23 @@
     "keywords": [
       "介護報酬",
       "改定"
+    ]
+  },
+  {
+    "date": "2026-10-03",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121914260X00320251127/86",
+    "keywords": [
+      "短時間",
+      "適用拡大",
+      "雇用保険"
+    ]
+  },
+  {
+    "date": "2026-10-03",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122105124X00420260310/23",
+    "keywords": [
+      "実質無償化",
+      "高校授業料"
     ]
   }
 ]
