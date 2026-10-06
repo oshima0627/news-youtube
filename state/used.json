@@ -1,22 +1,5 @@
 [
   {
-    "date": "2026-09-21",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122114103X00120260511/278",
-    "keywords": [
-      "付加税",
-      "令和九年",
-      "防衛特別所得税"
-    ]
-  },
-  {
-    "date": "2026-09-21",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122104376X00220260304/84",
-    "keywords": [
-      "令和八年",
-      "子ども・子育て支援金"
-    ]
-  },
-  {
     "date": "2026-09-22",
     "source_url": "https://kokkai.ndl.go.jp/txt/121705124X01720250618/132",
     "keywords": [
@@ -193,6 +176,24 @@
     "keywords": [
       "実質無償化",
       "高校授業料"
+    ]
+  },
+  {
+    "date": "2026-10-06",
+    "source_url": "https://kokkai.ndl.go.jp/txt/121905367X00220251127/7",
+    "keywords": [
+      "こども誰でも通園",
+      "令和八",
+      "本格実施"
+    ]
+  },
+  {
+    "date": "2026-10-06",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122104889X00220260408/355",
+    "keywords": [
+      "交通反則通告制度",
+      "十六歳",
+      "自転車"
     ]
   }
 ]
