@@ -1,23 +1,5 @@
 [
   {
-    "date": "2026-09-22",
-    "source_url": "https://kokkai.ndl.go.jp/txt/121705124X01720250618/132",
-    "keywords": [
-      "扶養",
-      "改正",
-      "特定親族特別控除"
-    ]
-  },
-  {
-    "date": "2026-09-22",
-    "source_url": "https://kokkai.ndl.go.jp/txt/122104260X01320260529/127",
-    "keywords": [
-      "五年",
-      "有期",
-      "遺族厚生年金"
-    ]
-  },
-  {
     "date": "2026-09-24",
     "source_url": "https://kokkai.ndl.go.jp/txt/121305367X00820240403/9",
     "keywords": [
@@ -194,6 +176,15 @@
       "交通反則通告制度",
       "十六歳",
       "自転車"
+    ]
+  },
+  {
+    "date": "2026-10-07",
+    "source_url": "https://kokkai.ndl.go.jp/txt/122115206X00720260423/130",
+    "keywords": [
+      "共同親権",
+      "導入",
+      "施行"
     ]
   }
 ]
